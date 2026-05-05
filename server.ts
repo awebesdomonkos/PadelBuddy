@@ -18,6 +18,7 @@ async function startServer() {
   const users: any[] = [
     { 
       id: "1", 
+      username: "marcp",
       name: "Marc", 
       email: "marc@padel.com",
       password: "password123",
@@ -44,6 +45,7 @@ async function startServer() {
     },
     { 
       id: "2", 
+      username: "ana_padel",
       name: "Ana", 
       email: "ana@padel.com",
       password: "password123",
@@ -69,6 +71,7 @@ async function startServer() {
     },
     { 
       id: "3", 
+      username: "joan_bcn",
       name: "Joan", 
       email: "joan@padel.com",
       password: "password123",
@@ -250,16 +253,25 @@ async function startServer() {
   });
 
   app.post("/api/register", (req, res) => {
-    const { name, email, phone, password } = req.body;
+    const { name, username, email, phone, password } = req.body;
     
-    // Check if user already exists with this email or phone (simple check for demo)
-    const existing = users.find(u => u.email === email || u.phone === phone);
-    if (existing) {
-      return res.status(400).json({ error: "User already exists with this email or phone" });
+    // Check if user already exists
+    if (users.find(u => u.email === email)) {
+      return res.status(400).json({ error: "EMAIL_TAKEN" });
+    }
+    if (users.find(u => u.phone === phone)) {
+      return res.status(400).json({ error: "PHONE_TAKEN" });
+    }
+    if (users.find(u => u.username === username)) {
+      return res.status(400).json({ error: "USERNAME_TAKEN" });
+    }
+    if (users.find(u => u.name === name)) {
+      return res.status(400).json({ error: "NAME_TAKEN" });
     }
 
     const newUser: any = {
       id: Math.random().toString(36).substr(2, 9),
+      username,
       name,
       email,
       phone,
@@ -279,10 +291,14 @@ async function startServer() {
 
   app.post("/api/login", (req, res) => {
     const { email, password } = req.body;
-    const user = users.find(u => u.email === email && u.password === password);
+    const user = users.find(u => u.email === email);
     
     if (!user) {
-      return res.status(401).json({ error: "Invalid email or password" });
+      return res.status(401).json({ error: "USER_NOT_FOUND" });
+    }
+
+    if (user.password !== password) {
+      return res.status(401).json({ error: "WRONG_PASSWORD" });
     }
     
     // Don't send password back

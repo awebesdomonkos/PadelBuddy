@@ -10,6 +10,7 @@ export enum SkillLevel {
 export enum GameType {
   Friendly = "Friendly",
   Competitive = "Competitive",
+  Training = "Training",
 }
 
 export enum PlayTime {
@@ -44,6 +45,7 @@ export interface FriendRequest {
 
 export interface User {
   id: string;
+  username: string;
   name: string;
   email?: string;
   phone?: string;
