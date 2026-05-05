@@ -96,8 +96,8 @@ export default function App() {
   const { t, lang, setLang } = useI18n('hu');
 
   // Registration/Auth state
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [authForm, setAuthForm] = useState({ name: '', email: '', phone: '' });
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', phone: '' });
+  const [authMode, setAuthMode] = useState<'landing' | 'login' | 'register'>('landing');
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
 
   useEffect(() => {
@@ -120,7 +120,7 @@ export default function App() {
         setIsCompletingProfile(true);
       }
     } else {
-      setIsRegistering(true);
+      setAuthMode('landing');
       fetchData();
     }
   }, []);
@@ -157,11 +157,11 @@ export default function App() {
         notifsRes.json()
       ]);
 
-      setGames(gamesData);
-      setPlayers(playersData);
-      setGroups(groupsData);
-      setClubs(clubsData);
-      setNotifications(notifsData);
+      setGames(Array.isArray(gamesData) ? gamesData : []);
+      setPlayers(Array.isArray(playersData) ? playersData : []);
+      setGroups(Array.isArray(groupsData) ? groupsData : []);
+      setClubs(Array.isArray(clubsData) ? clubsData : []);
+      setNotifications(Array.isArray(notifsData) ? notifsData : []);
     } catch (err) {
       console.error("Failed to fetch data", err);
     } finally {
@@ -181,11 +181,37 @@ export default function App() {
         const user = await res.json();
         setCurrentUser(user);
         localStorage.setItem('padel_user', JSON.stringify(user));
-        setIsRegistering(false);
+        setAuthMode('landing');
         setIsCompletingProfile(true);
       } else {
         const err = await res.json();
         alert(err.error || "Regisztráció sikertelen");
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authForm.email, password: authForm.password })
+      });
+      if (res.ok) {
+        const user = await res.json();
+        setCurrentUser(user);
+        localStorage.setItem('padel_user', JSON.stringify(user));
+        setAuthMode('landing');
+        // Check if profile needs completion
+        if (!user.bio || !user.location?.city) {
+          setIsCompletingProfile(true);
+        }
+      } else {
+        const err = await res.json();
+        alert(err.error || "Belépés sikertelen");
       }
     } catch (err) {
       console.error(err);
@@ -215,7 +241,7 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('padel_user');
-    setIsRegistering(true);
+    setAuthMode('landing');
   };
 
   const handleJoinGame = async (gameId: string) => {
@@ -488,32 +514,48 @@ export default function App() {
     handleUpdateUser({ languagePreference: newLang });
   };
 
-  if (isRegistering && !currentUser) {
-    return (
-      <RegistrationForm 
-        formData={authForm}
-        setFormData={setAuthForm}
-        onSubmit={handleRegister}
-        onCancel={() => setIsRegistering(false)}
-        t={t}
-      />
-    );
+  if (!currentUser) {
+    if (authMode === 'register') {
+      return (
+        <RegistrationForm 
+          formData={authForm}
+          setFormData={setAuthForm}
+          onSubmit={handleRegister}
+          onCancel={() => setAuthMode('landing')}
+          t={t}
+        />
+      );
+    }
+    if (authMode === 'login') {
+      return (
+        <LoginForm 
+          formData={authForm}
+          setFormData={setAuthForm}
+          onSubmit={handleLogin}
+          onCancel={() => setAuthMode('landing')}
+          t={t}
+        />
+      );
+    }
+    return <AuthScreen onSelectMode={setAuthMode} t={t} />;
   }
 
   if (isCompletingProfile && currentUser) {
     return (
-      <div className="min-h-screen bg-[#F5F5F0] p-4 md:p-8">
-        <div className="max-w-xl mx-auto">
-          <div className="mb-8">
+      <div className="min-h-screen bg-[#F8F8F5] p-4 md:p-8 flex items-center justify-center">
+        <div className="max-w-xl mx-auto w-full">
+          <div className="mb-10 text-center sm:text-left">
             <h1 className="text-4xl font-black uppercase tracking-tighter italic mb-2">{t('auth.completeProfileTitle')}</h1>
-            <p className="text-[#141414]/60">{t('auth.completeProfileSub')}</p>
+            <p className="text-[#141414]/60 font-medium">{t('auth.completeProfileSub')}</p>
           </div>
-          <ProfileEdit 
-            user={currentUser} 
-            onSave={handleProfileComplete} 
-            onCancel={() => {}} // Can't cancel during mandatory completion
-            onShowTutorial={() => setIsLevelTutorialOpen(true)}
-          />
+          <div className="bg-white p-2 rounded-[2.5rem] shadow-2xl shadow-black/5">
+            <ProfileEdit 
+              user={currentUser} 
+              onSave={handleProfileComplete} 
+              onCancel={() => {}} 
+              onShowTutorial={() => setIsLevelTutorialOpen(true)}
+            />
+          </div>
         </div>
         
         {isLevelTutorialOpen && (
@@ -521,10 +563,6 @@ export default function App() {
         )}
       </div>
     );
-  }
-
-  if (!currentUser) {
-    return <AuthScreen onRegister={() => setIsRegistering(true)} onShowTutorial={() => setIsLevelTutorialOpen(true)} />;
   }
 
   return (
@@ -537,7 +575,7 @@ export default function App() {
               <div className="w-8 h-8 bg-[#141414] rounded-full flex items-center justify-center">
                 <TrendingUp className="text-[#E2FF3B] w-5 h-5" />
               </div>
-              <span className="font-bold text-xl tracking-tight">PadelBuddy</span>
+              <span className="font-bold text-xl tracking-tight">FindYour PadelBuddy</span>
             </div>
 
             {/* Desktop Nav */}
@@ -587,7 +625,7 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 pb-32 md:pb-12 pt-6">
+      <main className="max-w-7xl mx-auto px-4 pb-32 md:pb-12 pt-6">
         <AnimatePresence mode="wait">
           {activeTab === 'games' && (
             <motion.div
@@ -599,8 +637,8 @@ export default function App() {
             >
               <div className="flex justify-between items-end">
                 <div>
-                  <h2 className="text-3xl font-black uppercase italic tracking-tighter">{t('games.findGame')}</h2>
-                  <p className="text-sm opacity-60">{t('games.findGameSub')}</p>
+                  <h2 className="text-2xl sm:text-3xl font-black uppercase italic tracking-tighter">{t('games.findGame')}</h2>
+                  <p className="text-xs sm:text-sm opacity-60">{t('games.findGameSub')}</p>
                 </div>
                 <button 
                   onClick={() => setActiveTab('create')}
@@ -620,14 +658,14 @@ export default function App() {
                       gameFilter === f ? 'bg-[#141414] text-[#E2FF3B]' : 'bg-[#141414]/5 text-[#141414]/40'
                     }`}
                   >
-                    {f === 'lastminute' ? 'Last Minute 🔥' : f}
+                    {t(`games.filters.${f}`)}
                   </button>
                 ))}
               </div>
 
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 {isLoading ? (
-                  <p className="py-20 text-center font-mono text-xs opacity-50 uppercase tracking-widest">{t('common.scanning')}</p>
+                  <div className="md:col-span-2 lg:col-span-3 py-20 text-center font-mono text-xs opacity-50 uppercase tracking-widest">{t('common.scanning')}</div>
                 ) : (
                   (() => {
                     const filteredGames = games.filter(g => {
@@ -692,7 +730,7 @@ export default function App() {
                         );
                       })
                     ) : (
-                      <div className="py-20 text-center border-2 border-dashed border-[#141414]/10 rounded-3xl">
+                      <div className="md:col-span-2 lg:col-span-3 py-20 text-center border-2 border-dashed border-[#141414]/10 rounded-3xl">
                         <p className="text-sm opacity-40">{t('common.noMatchesFound')}</p>
                       </div>
                     );
@@ -711,8 +749,8 @@ export default function App() {
               className="space-y-6"
             >
               <div>
-                <h2 className="text-3xl font-black uppercase italic tracking-tighter">{t('nav.players')}</h2>
-                <p className="text-sm opacity-60">Találj partnereket a közeledben.</p>
+                <h2 className="text-2xl sm:text-3xl font-black uppercase italic tracking-tighter">{t('nav.players')}</h2>
+                <p className="text-xs sm:text-sm opacity-60">{t('players.subTitle')}</p>
               </div>
               
               <div className="flex flex-col gap-4">
@@ -742,7 +780,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {players
                   .filter(p => p.id !== currentUser.id)
                   .filter(p => !currentUser.blockedUserIds?.includes(p.id))
@@ -959,7 +997,9 @@ export default function App() {
                         </h3>
                         <div className="flex flex-wrap gap-2">
                           {currentUser.interests.map(interest => (
-                            <span key={interest} className="px-3 py-1.5 bg-[#141414]/5 rounded-xl text-[10px] font-bold uppercase tracking-wider">{interest}</span>
+                            <span key={interest} className="px-3 py-1.5 bg-[#141414]/5 rounded-xl text-[10px] font-bold uppercase tracking-wider">
+                              {t(`profile.interestsList.${interest}`) || interest}
+                            </span>
                           ))}
                         </div>
                       </div>
@@ -1138,6 +1178,49 @@ export default function App() {
           <LevelTutorial onClose={() => setIsLevelTutorialOpen(false)} t={t} />
         )}
       </AnimatePresence>
+
+      {/* Bottom Nav (Mobile Only) */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-lg border-t border-[#141414]/10 flex justify-around items-center px-4 py-3 md:hidden">
+        <button 
+          onClick={() => setActiveTab('games')}
+          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'games' ? 'text-[#141414]' : 'text-[#141414]/30'}`}
+        >
+          <TrendingUp className={`w-5 h-5 ${activeTab === 'games' ? 'text-[#141414]' : ''}`} />
+          <span className="text-[10px] font-black uppercase tracking-widest">{t('nav.games')}</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('players')}
+          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'players' ? 'text-[#141414]' : 'text-[#141414]/30'}`}
+        >
+          <Users className={`w-5 h-5 ${activeTab === 'players' ? 'text-[#141414]' : ''}`} />
+          <span className="text-[10px] font-black uppercase tracking-widest">{t('nav.players')}</span>
+        </button>
+        <button 
+          onClick={() => {
+            setGameToEdit(null);
+            setActiveTab('create');
+          }}
+          className="flex flex-col items-center -mt-8"
+        >
+          <div className="w-12 h-12 bg-[#141414] rounded-[18px] flex items-center justify-center shadow-xl shadow-black/20 transform rotate-45 group active:scale-90 transition-all border border-[#E2FF3B]/20">
+            <Plus className="w-6 h-6 text-[#E2FF3B] -rotate-45" />
+          </div>
+        </button>
+        <button 
+          onClick={() => setActiveTab('groups')}
+          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'groups' ? 'text-[#141414]' : 'text-[#141414]/30'}`}
+        >
+          <MessageSquare className={`w-5 h-5 ${activeTab === 'groups' ? 'text-[#141414]' : ''}`} />
+          <span className="text-[10px] font-black uppercase tracking-widest">{t('nav.groups')}</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('profile')}
+          className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'profile' ? 'text-[#141414]' : 'text-[#141414]/30'}`}
+        >
+          <UserIcon className={`w-5 h-5 ${activeTab === 'profile' ? 'text-[#141414]' : ''}`} />
+          <span className="text-[10px] font-black uppercase tracking-widest">{t('nav.profile')}</span>
+        </button>
+      </nav>
     </div>
   );
 }
@@ -1233,18 +1316,18 @@ function GameCard({
             <div className="flex flex-col">
               <span className="text-xs font-bold tracking-tight">{game.creator?.name || 'Player'}</span>
               {game.creator?.reliabilityStatus && (
-                <span className="text-[8px] uppercase tracking-tighter font-black opacity-30">{game.creator.reliabilityStatus}</span>
+                <span className="text-[10px] uppercase tracking-tighter font-black opacity-30">{t(`profile.reliabilityStatus.${game.creator.reliabilityStatus}`)}</span>
               )}
             </div>
           </div>
           <h3 className="font-bold text-lg leading-tight">{game.location}</h3>
           <div className="flex gap-2 flex-wrap pt-1">
             {game.recommendedLevel && (
-              <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-black uppercase">{game.recommendedLevel} {t('groups.recommendedLevel')}</span>
+              <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-black uppercase">{t(`profile.levels.${game.recommendedLevel}`)} {t('groups.recommendedLevel')}</span>
             )}
             {game.gameType && (
-              <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase ${game.gameType === 'Competitive' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                {game.gameType}
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-black uppercase ${game.gameType === 'Competitive' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                {t(`games.gameTypes.${game.gameType}`)}
               </span>
             )}
           </div>
@@ -1421,6 +1504,7 @@ function PlayerCard({
   onToggleFavorite: () => void,
   onOpenProfile: (p: User) => void
 }) {
+  const { t } = useI18n('hu');
   const isOnline = player.lastActive && (new Date(player.lastActive) > new Date(Date.now() - 3600000));
 
   return (
@@ -1442,13 +1526,13 @@ function PlayerCard({
         <div className="flex items-center gap-2">
           <h3 className="font-bold truncate">{player.name}</h3>
           {(player.lfgStatus && player.lfgStatus !== LFGStatus.None) && (
-             <span className="text-[8px] bg-green-100 text-green-700 px-1 py-0.5 rounded font-black uppercase whitespace-nowrap">
-               LFG: {player.lfgStatus}
+             <span className="text-[8px] sm:text-[9px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-black uppercase whitespace-nowrap">
+               LFG: {t(`profile.lfg.${player.lfgStatus}`)}
              </span>
           )}
         </div>
         <div className="flex gap-2 items-center mt-1">
-          <span className="text-[10px] font-black uppercase tracking-widest bg-[#141414]/5 px-2 py-0.5 rounded italic">{player.skillLevel}</span>
+          <span className="text-[10px] font-black uppercase tracking-widest bg-[#141414]/5 px-2 py-0.5 rounded italic">{t(`profile.levels.${player.skillLevel}`)}</span>
           <span className="text-[10px] opacity-40 flex items-center gap-0.5 truncate max-w-[100px]"><MapPin className="w-2 h-2 shrink-0" /> {player.location.city}</span>
         </div>
       </div>
@@ -1589,46 +1673,47 @@ function CreateGameForm({
               onChange={e => setFormData({ ...formData, recurrence: e.target.value })}
               className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 pl-12 pr-4 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none appearance-none"
             >
-              <option value="none">One-time game</option>
-              <option value="weekly">Every Week</option>
-              <option value="biweekly">Every 2 Weeks</option>
-              <option value="monthly">Every Month</option>
+              <option value="none">{lang === 'hu' ? 'Egyszeri alkalom' : 'One-time game'}</option>
+              <option value="weekly">{lang === 'hu' ? 'Minden héten' : 'Every Week'}</option>
+              <option value="biweekly">{lang === 'hu' ? '2 hetente' : 'Every 2 Weeks'}</option>
+              <option value="monthly">{lang === 'hu' ? 'Havonta' : 'Every Month'}</option>
             </select>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-widest opacity-40 px-1">Date & Time</label>
-          <div className="relative">
-            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
-            <input 
-              type="datetime-local" 
-              required
-              value={formData.datetime}
-              onChange={e => setFormData({ ...formData, datetime: e.target.value })}
-              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 pl-12 pr-4 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none"
-            />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-widest opacity-40 px-1">{t('common.datetime')}</label>
+              <div className="relative">
+                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
+                <input 
+                  type="datetime-local" 
+                  required
+                  value={formData.datetime}
+                  onChange={e => setFormData({ ...formData, datetime: e.target.value })}
+                  className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 pl-12 pr-4 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-widest opacity-40 px-1">{t('games.type')}</label>
+              <div className="relative">
+                <Target className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
+                <select 
+                  value={formData.gameType}
+                  onChange={e => setFormData({ ...formData, gameType: e.target.value as GameType })}
+                  className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 pl-12 pr-4 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none appearance-none"
+                >
+                  <option value={GameType.Friendly}>{t('games.gameTypes.Friendly')}</option>
+                  <option value={GameType.Competitive}>{t('games.gameTypes.Competitive')}</option>
+                  <option value={GameType.Training}>{t('games.gameTypes.Training')}</option>
+                </select>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-widest opacity-40 px-1">{t('games.type')}</label>
-          <div className="relative">
-            <Target className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 opacity-40" />
-            <select 
-              value={formData.gameType}
-              onChange={e => setFormData({ ...formData, gameType: e.target.value as GameType })}
-              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 pl-12 pr-4 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none appearance-none"
-            >
-              <option value={GameType.Friendly}>Friendly</option>
-              <option value={GameType.Competitive}>Competitive</option>
-            </select>
-          </div>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-2">
           <div className="flex justify-between items-center px-1">
             <label className="text-xs font-bold uppercase tracking-widest opacity-40">{t('games.level')}</label>
@@ -1660,20 +1745,20 @@ function CreateGameForm({
               onChange={e => setFormData({ ...formData, requiredPlayers: e.target.value })}
               className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 pl-12 pr-4 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none appearance-none"
             >
-              <option value="1">+1 Player</option>
-              <option value="2">+2 Players</option>
-              <option value="3">+3 Players</option>
+              <option value="1">1 {t('players.members') || 'Player'}</option>
+              <option value="2">2 {t('players.members') || 'Players'}</option>
+              <option value="3">3 {t('players.members') || 'Players'}</option>
             </select>
           </div>
         </div>
       </div>
 
       <div className="space-y-2">
-        <label className="text-xs font-bold uppercase tracking-widest opacity-40 px-1">{t('profile.bio')}</label>
+        <label className="text-xs font-bold uppercase tracking-widest opacity-40 px-1">{t('games.note')}</label>
         <textarea 
           value={formData.note}
           onChange={e => setFormData({ ...formData, note: e.target.value })}
-          placeholder="e.g. Left player needed, coffee after meatch!"
+          placeholder={lang === 'hu' ? 'Pl. Balos játékos kerestetik, meccs után kávézunk!' : 'e.g. Left player needed, coffee after match!'}
           className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none min-h-[100px]"
         />
       </div>
@@ -1699,7 +1784,7 @@ function CreateGameForm({
 
         {formData.visibility === 'group-only' && (
           <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
-            <label className="text-xs font-bold uppercase tracking-widest opacity-40 px-1">Select Group</label>
+            <label className="text-xs font-bold uppercase tracking-widest opacity-40 px-1">{t('games.selectGroup')}</label>
             <div className="grid grid-cols-1 gap-2">
               {groups.map(g => (
                 <button
@@ -1713,10 +1798,10 @@ function CreateGameForm({
                   }`}
                 >
                   <p className="text-sm font-bold">{g.name}</p>
-                  <p className="text-[10px] opacity-40 uppercase font-black">{g.memberIds.length} members</p>
+                  <p className="text-[10px] opacity-40 uppercase font-black">{g.memberIds.length} {t('groups.members')}</p>
                 </button>
               ))}
-              {groups.length === 0 && <p className="text-xs opacity-40 italic">You are not in any groups.</p>}
+              {groups.length === 0 && <p className="text-xs opacity-40 italic">{t('games.noGroups')}</p>}
             </div>
           </div>
         )}
@@ -1764,46 +1849,54 @@ function CreateGameForm({
   );
 }
 
-function AuthScreen({ onRegister, onShowTutorial }: { onRegister: () => void, onShowTutorial?: () => void }) {
-  const { t } = useI18n('hu');
-
+function AuthScreen({ onSelectMode, t }: { onSelectMode: (mode: 'login' | 'register') => void, t: any }) {
   return (
-    <div className="min-h-screen bg-[#141414] text-white flex flex-col p-6 overflow-hidden relative">
-      <div className="absolute top-[-10%] right-[-10%] w-[60%] h-[40%] bg-[#E2FF3B] blur-[120px] opacity-20 rounded-full" />
-      <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#E2FF3B] blur-[100px] opacity-10 rounded-full" />
+    <div className="min-h-screen bg-[#0A0A0A] text-white flex flex-col p-6 overflow-hidden relative">
+      <div className="absolute top-[10%] right-[-10%] w-[80%] h-[50%] bg-[#E2FF3B]/10 blur-[120px] rounded-full" />
+      <div className="absolute bottom-[20%] left-[-5%] w-[60%] h-[40%] bg-[#E2FF3B]/5 blur-[100px] rounded-full" />
       
-      <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full relative z-10">
-        <div className="mb-12">
-          <div className="w-16 h-16 bg-[#E2FF3B] rounded-[24px] flex items-center justify-center mb-8 shadow-2xl shadow-[#E2FF3B]/40 transform -rotate-6">
+      <div className="flex-1 flex flex-col items-center justify-center max-w-sm mx-auto w-full relative z-10 text-center">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-12 flex flex-col items-center"
+        >
+          <div className="w-16 h-16 bg-[#E2FF3B] rounded-[24px] flex items-center justify-center mb-8 shadow-[0_0_40px_rgba(226,255,59,0.2)]">
             <Target className="w-8 h-8 text-[#141414]" />
           </div>
-          <h1 className="text-7xl font-black uppercase italic leading-[0.8] tracking-tighter mb-4">
+          <h1 className="text-5xl sm:text-7xl font-black uppercase italic leading-[0.8] tracking-tighter mb-4 text-white">
             Padel<br />Buddy
           </h1>
-          <p className="text-xl font-medium opacity-60 leading-tight pr-12">
+          <p className="text-sm font-bold opacity-60 uppercase tracking-widest text-[#E2FF3B]">
             {t('auth.subTitle')}
           </p>
-        </div>
+        </motion.div>
         
-        <div className="space-y-4">
-          <button 
-            onClick={onRegister}
-            className="w-full bg-[#E2FF3B] text-[#141414] py-5 rounded-[24px] font-black uppercase tracking-tighter text-lg shadow-xl shadow-[#E2FF3B]/30 hover:scale-[1.02] active:scale-[0.98] transition-all"
+        <div className="w-full space-y-4">
+          <motion.button 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+            onClick={() => onSelectMode('register')}
+            className="w-full bg-[#E2FF3B] text-[#141414] py-5 rounded-2xl font-black uppercase tracking-tighter text-sm shadow-[0_10px_30px_rgba(226,255,59,0.2)] hover:scale-[1.02] active:scale-[0.98] transition-all"
           >
             {t('auth.register')}
-          </button>
+          </motion.button>
           
-          <button 
-            onClick={onRegister}
-            className="w-full bg-white/5 text-white py-5 rounded-[24px] font-black uppercase tracking-tighter text-lg hover:bg-white/10 transition-all border border-white/10"
+          <motion.button 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2 }}
+            onClick={() => onSelectMode('login')}
+            className="w-full bg-white/5 text-white py-5 rounded-2xl font-black uppercase tracking-tighter text-sm hover:bg-white/10 transition-all border border-white/10"
           >
             {t('auth.login')}
-          </button>
+          </motion.button>
         </div>
         
-        <div className="mt-12 flex items-center gap-3 opacity-40">
-          <ShieldCheck className="w-5 h-5" />
-          <p className="text-[10px] font-black uppercase tracking-widest">{t('auth.secure')}</p>
+        <div className="mt-16 flex items-center gap-2 opacity-30">
+          <ShieldCheck className="w-4 h-4" />
+          <p className="text-[10px] font-black uppercase tracking-[0.2em]">{t('auth.secure')}</p>
         </div>
       </div>
     </div>
@@ -1817,68 +1910,175 @@ function RegistrationForm({
   onCancel,
   t 
 }: { 
-  formData: { name: string, email: string, phone: string },
+  formData: any,
   setFormData: (data: any) => void,
   onSubmit: (e: React.FormEvent) => void,
   onCancel: () => void,
-  t: (key: string) => string
+  t: any
 }) {
   return (
-    <div className="min-h-screen bg-[#F5F5F0] flex flex-col p-6 font-sans">
-      <div className="max-w-sm mx-auto w-full flex-1 flex flex-col justify-center">
-        <button onClick={onCancel} className="self-start mb-12 p-3 bg-white rounded-2xl shadow-sm hover:bg-gray-50 transition-colors">
+    <div className="min-h-screen bg-[#F8F8F5] flex flex-col p-6 font-sans overflow-y-auto">
+      <div className="max-w-sm mx-auto w-full flex-1 flex flex-col py-8">
+        <motion.button 
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          onClick={onCancel} 
+          className="self-start mb-12 p-3 bg-white rounded-2xl shadow-sm border border-black/5 hover:bg-gray-50 transition-colors"
+        >
           <ArrowLeft className="w-5 h-5 text-[#141414]" />
-        </button>
+        </motion.button>
 
-        <div className="mb-10">
-          <h2 className="text-5xl font-black uppercase italic tracking-tighter leading-none mb-4">{t('auth.register')}</h2>
-          <p className="text-sm opacity-50 font-medium">{t('auth.subTitle')}</p>
-        </div>
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-10"
+        >
+          <h2 className="text-4xl sm:text-5xl font-black uppercase italic tracking-tighter leading-none mb-4 text-[#141414]">{t('auth.register')}</h2>
+          <p className="text-sm opacity-50 font-bold text-[#141414]">{t('auth.subTitle')}</p>
+        </motion.div>
 
-        <form onSubmit={onSubmit} className="bg-white p-8 rounded-[2.5rem] shadow-2xl shadow-black/5 space-y-6">
+        <motion.form 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          onSubmit={onSubmit} 
+          className="bg-white p-8 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] space-y-6"
+        >
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-widest px-1 opacity-40">{t('auth.nameLabel')}</label>
+            <label className="text-[10px] font-black uppercase tracking-widest px-1 opacity-40 text-[#141414]">{t('auth.nameLabel')}</label>
             <input 
               required
               type="text" 
               placeholder={t('auth.namePlaceholder')}
               value={formData.name}
               onChange={e => setFormData({ ...formData, name: e.target.value })}
-              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold"
+              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold text-[#141414]"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-widest px-1 opacity-40">{t('auth.emailLabel')}</label>
+            <label className="text-[10px] font-black uppercase tracking-widest px-1 opacity-40 text-[#141414]">{t('auth.emailLabel')}</label>
             <input 
               required
               type="email" 
               placeholder={t('auth.emailPlaceholder')}
               value={formData.email}
               onChange={e => setFormData({ ...formData, email: e.target.value })}
-              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold"
+              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold text-[#141414]"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-widest px-1 opacity-40">{t('auth.phoneLabel')}</label>
+            <label className="text-[10px] font-black uppercase tracking-widest px-1 opacity-40 text-[#141414]">{t('auth.phoneLabel')}</label>
             <input 
               required
               type="tel" 
               placeholder={t('auth.phonePlaceholder')}
               value={formData.phone}
               onChange={e => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold"
+              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold text-[#141414]"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest px-1 opacity-40 text-[#141414]">{t('auth.passwordLabel')}</label>
+            <input 
+              required
+              minLength={6}
+              type="password" 
+              placeholder={t('auth.passwordPlaceholder')}
+              value={formData.password}
+              onChange={e => setFormData({ ...formData, password: e.target.value })}
+              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold text-[#141414]"
             />
           </div>
 
           <button 
             type="submit"
-            className="w-full bg-[#141414] text-[#E2FF3B] py-5 rounded-[22px] font-black uppercase tracking-widest text-[13px] shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
+            className="w-full bg-[#141414] text-[#E2FF3B] py-5 rounded-2xl font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-black/10 mt-4"
           >
             {t('auth.register')}
           </button>
-        </form>
+        </motion.form>
+      </div>
+    </div>
+  );
+}
+
+function LoginForm({ 
+  formData, 
+  setFormData, 
+  onSubmit, 
+  onCancel,
+  t 
+}: { 
+  formData: any,
+  setFormData: (data: any) => void,
+  onSubmit: (e: React.FormEvent) => void,
+  onCancel: () => void,
+  t: any
+}) {
+  return (
+    <div className="min-h-screen bg-[#F8F8F5] flex flex-col p-6 font-sans overflow-y-auto">
+      <div className="max-w-sm mx-auto w-full flex-1 flex flex-col py-8 justify-center">
+        <motion.button 
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          onClick={onCancel} 
+          className="self-start mb-12 p-3 bg-white rounded-2xl shadow-sm border border-black/5 hover:bg-gray-50 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5 text-[#141414]" />
+        </motion.button>
+
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-10"
+        >
+          <h2 className="text-4xl sm:text-5xl font-black uppercase italic tracking-tighter leading-none mb-4 text-[#141414]">{t('auth.login')}</h2>
+          <p className="text-sm opacity-50 font-bold text-[#141414]">{t('auth.subTitle')}</p>
+        </motion.div>
+
+        <motion.form 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          onSubmit={onSubmit} 
+          className="bg-white p-8 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] space-y-6"
+        >
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest px-1 opacity-40 text-[#141414]">{t('auth.emailLabel')}</label>
+            <input 
+              required
+              type="email" 
+              placeholder={t('auth.emailPlaceholder')}
+              value={formData.email}
+              onChange={e => setFormData({ ...formData, email: e.target.value })}
+              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold text-[#141414]"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest px-1 opacity-40 text-[#141414]">{t('auth.passwordLabel')}</label>
+            <input 
+              required
+              type="password" 
+              placeholder="••••••••"
+              value={formData.password}
+              onChange={e => setFormData({ ...formData, password: e.target.value })}
+              className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold text-[#141414]"
+            />
+          </div>
+
+          <button 
+            type="submit"
+            className="w-full bg-[#141414] text-[#E2FF3B] py-5 rounded-2xl font-black uppercase tracking-widest hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-black/10 mt-4"
+          >
+            {t('auth.login')}
+          </button>
+        </motion.form>
       </div>
     </div>
   );
@@ -2034,12 +2234,12 @@ function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, o
                 onClick={() => setFormData({ ...formData, avatarUrl: '' })}
                 className="text-[10px] font-bold text-red-500 uppercase tracking-widest hover:underline"
               >
-                {t('common.delete')} photo
+                {t('common.delete')} kép
               </button>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">{t('groups.name')}</label>
               <input 
@@ -2101,29 +2301,29 @@ function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, o
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Looking for Game</label>
+              <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">{t('profile.status')}</label>
               <select 
                 value={formData.lfgStatus}
                 onChange={e => setFormData({ ...formData, lfgStatus: e.target.value as LFGStatus })}
                 className="w-full bg-[#141414]/5 border-none rounded-xl py-3 px-4 text-xs font-bold focus:ring-1 focus:ring-[#E2FF3B] outline-none appearance-none"
               >
-                {Object.values(LFGStatus).map(s => <option key={s} value={s}>{s === 'None' ? 'Nem keresek' : s}</option>)}
+                {Object.values(LFGStatus).map(s => <option key={s} value={s}>{t(`profile.lfg.${s}`)}</option>)}
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Play Style</label>
+              <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">{t('profile.playStyle')}</label>
               <div className="flex gap-1">
                 {(['Casual', 'Competitive'] as const).map(s => (
                   <button
                     key={s}
                     onClick={() => setFormData({ ...formData, playStyle: s })}
                     className={`flex-1 py-3 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                      formData.playStyle === s ? 'bg-[#141414] text-[#E2FF3B]' : 'bg-[#141414]/5 text-[#141414]/30'
+                      formData.playStyle === s ? 'bg-[#141414] text-[#E2FF3B]' : 'bg-[#141414]/5 text-[#141414]/40'
                     }`}
                   >
-                    {s}
+                    {t(`profile.playStyles.${s}`)}
                   </button>
                 ))}
               </div>
@@ -2159,7 +2359,7 @@ function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, o
 
           <div className="space-y-1">
             <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">{t('profile.padelExperience')}</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {Object.values(PadelExperience).map(exp => (
                 <button
                   key={exp}
@@ -2170,7 +2370,7 @@ function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, o
                     : 'bg-[#141414]/5 text-[#141414]/30'
                   }`}
                 >
-                  {exp}
+                  {t(`profile.experienceLevels.${exp}`) || exp}
                 </button>
               ))}
             </div>
@@ -2179,22 +2379,22 @@ function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, o
           <div className="space-y-1">
             <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">{t('profile.languages')}</label>
             <div className="flex flex-wrap gap-2 mb-2">
-              {['Hungarian', 'English', 'Spanish', 'German', 'French', 'Italian'].map(lang => (
+              {['Hungarian', 'English', 'Spanish', 'German', 'French', 'Italian'].map(lang_val => (
                 <button
-                  key={lang}
+                  key={lang_val}
                   onClick={() => {
-                    const next = formData.languages.includes(lang)
-                      ? formData.languages.filter(l => l !== lang)
-                      : [...formData.languages, lang];
+                    const next = formData.languages.includes(lang_val)
+                      ? formData.languages.filter(l => l !== lang_val)
+                      : [...formData.languages, lang_val];
                     setFormData({ ...formData, languages: next });
                   }}
                   className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border ${
-                    formData.languages.includes(lang)
+                    formData.languages.includes(lang_val)
                       ? 'bg-white border-[#141414] text-[#141414]'
                       : 'bg-transparent border-[#141414]/10 text-[#141414]/40'
                   }`}
                 >
-                  {lang}
+                  {t(`profile.languageList.${lang_val}`) || lang_val}
                 </button>
               ))}
             </div>
@@ -2210,7 +2410,7 @@ function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, o
                 <Instagram className="w-4 h-4 opacity-30" />
                 <input 
                   type="text" 
-                  placeholder="Instagram username"
+                  placeholder={t('profile.instagramPlaceholder') || 'Instagram felhasználónév'}
                   value={formData.socialLinks.instagram || ''}
                   onChange={e => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, instagram: e.target.value } })}
                   className="flex-1 bg-transparent border-none py-3 text-xs font-bold outline-none"
@@ -2220,7 +2420,7 @@ function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, o
                 <Facebook className="w-4 h-4 opacity-30" />
                 <input 
                   type="text" 
-                  placeholder="Facebook URL or username"
+                  placeholder={t('profile.facebookPlaceholder') || 'Facebook profil vagy név'}
                   value={formData.socialLinks.facebook || ''}
                   onChange={e => setFormData({ ...formData, socialLinks: { ...formData.socialLinks, facebook: e.target.value } })}
                   className="flex-1 bg-transparent border-none py-3 text-xs font-bold outline-none"
@@ -2258,7 +2458,7 @@ function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, o
 
           <div className="space-y-1">
             <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">{t('profile.playTimes')}</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {Object.values(PlayTime).map(t_val => (
                 <button
                   key={t_val}
@@ -2267,7 +2467,7 @@ function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, o
                     formData.playTime.includes(t_val) ? 'bg-[#141414] text-[#E2FF3B]' : 'bg-[#141414]/5 text-[#141414]/30'
                   }`}
                 >
-                  {t_val}
+                  {t(`profile.playTimesList.${t_val}`) || t_val}
                 </button>
               ))}
             </div>
@@ -2292,7 +2492,7 @@ function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, o
                   : 'bg-[#141414]/5 text-[#141414]/50 hover:bg-[#141414]/10'
                 }`}
               >
-                {interest}
+                {t(`profile.interestsList.${interest}`) || interest}
               </button>
             ))}
           </div>
@@ -2709,7 +2909,7 @@ function GroupsTab({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {groups.map(group => {
           const isMember = group.memberIds.includes(currentUser.id);
           return (
@@ -2724,7 +2924,7 @@ function GroupsTab({
                 <div className="flex flex-col items-end gap-2">
                   {group.recommendedLevel && (
                     <span className="px-3 py-1 bg-[#141414] text-[#E2FF3B] rounded-full text-[10px] font-black uppercase tracking-widest">
-                      {group.recommendedLevel}
+                      {t(`profile.levels.${group.recommendedLevel}`)}
                     </span>
                   )}
                   <span className="text-[9px] font-black uppercase opacity-30 tracking-widest">
@@ -2774,9 +2974,9 @@ function GroupsTab({
   );
 }
 
-function MatchHistory({ games }: { games: Game[] }) {
+function MatchHistory({ games = [] }: { games: Game[] }) {
   const { t } = useI18n('hu');
-  const completedGames = games.filter(g => g.isCompleted).sort((a, b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime());
+  const completedGames = (games || []).filter(g => g.isCompleted).sort((a, b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime());
 
   if (completedGames.length === 0) {
     return (
@@ -2907,7 +3107,7 @@ function ResultModal({ game, onSave, onClose }: { game: Game, onSave: (res: any)
 function ProfileDrawer({ 
   user, 
   currentUser,
-  games,
+  games = [],
   onClose,
   onFavorite,
   onSendFriendRequest,
@@ -2922,7 +3122,7 @@ function ProfileDrawer({
   onBlock: (id: string) => void
 }) {
   const { t } = useI18n(currentUser.languagePreference || 'hu');
-  const userGames = games.filter(g => g.joinedPlayers.includes(user.id));
+  const userGames = (games || []).filter(g => g.joinedPlayers.includes(user.id));
   const isFriend = currentUser.friendIds?.includes(user.id);
   const isBlocked = currentUser.blockedUserIds?.includes(user.id);
   
@@ -2942,12 +3142,12 @@ function ProfileDrawer({
             </div>
           )}
           <div className="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-[#F5F5F0] via-[#F5F5F0]/80 to-transparent">
-             <div className="flex justify-between items-end">
+             <div className="flex justify-between items-end flex-wrap gap-4">
                <div>
                  <span className="px-2 py-0.5 bg-[#E2FF3B] text-[#141414] rounded-lg text-[10px] font-black uppercase tracking-widest mb-2 inline-block shadow-sm">
-                   {user.skillLevel}
+                   {t(`profile.levels.${user.skillLevel}`)}
                  </span>
-                 <h2 className="text-3xl font-black uppercase leading-none italic">{user.name}</h2>
+                 <h2 className="text-2xl sm:text-3xl font-black uppercase leading-none italic">{user.name}</h2>
                  <p className="text-xs font-bold opacity-40 uppercase tracking-widest flex items-center gap-1 mt-2">
                    <MapPin className="w-3 h-3" /> {user.location.city}
                  </p>
@@ -3003,42 +3203,60 @@ function ProfileDrawer({
             </button>
           </div>
 
-          {/* Stats Bar */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
              {[
-               { icon: History, label: 'Played', value: user.attendedGamesCount || 0 },
-               { icon: Award, label: 'Experience', value: user.experience || 'New' },
-               { icon: Shield, label: 'Reliability', value: user.reliabilityStatus || 'New' }
+               { icon: History, label: t('profile.playedGames'), value: user.attendedGamesCount || 0 },
+               { icon: Award, label: t('groups.members'), value: user.groupsCount || 0 },
+               { icon: Users, label: t('profile.friends'), value: user.friendIds?.length || 0 },
+               { icon: Award, label: t('profile.skillLevel'), value: t(`profile.levels.${user.skillLevel}`) }
              ].map((stat, i) => (
-               <div key={i} className="bg-white p-3 rounded-2xl border border-[#141414]/5 text-center flex flex-col items-center shadow-sm">
-                 <stat.icon className="w-4 h-4 opacity-30 mb-2" />
-                 <p className="text-[10px] font-black uppercase opacity-40 mb-0.5">{stat.label}</p>
-                 <p className="text-xs font-black truncate w-full">{stat.value}</p>
+               <div key={i} className="bg-white p-3 rounded-2xl border border-[#141414]/5 text-center flex flex-col items-center justify-center shadow-sm min-h-[90px]">
+                 <div className="text-[8px] font-black uppercase opacity-40 mb-1 leading-tight h-6 flex items-center justify-center text-center">
+                    {stat.label}
+                 </div>
+                 <p className="text-sm font-black truncate w-full">{stat.value}</p>
                </div>
              ))}
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+             <div className="bg-white p-4 rounded-2xl border border-[#141414]/5 shadow-sm">
+                <p className="text-[10px] font-black uppercase opacity-40 mb-2">{t('profile.playStyle')}</p>
+                <div className="flex items-center gap-2">
+                   <Target className="w-4 h-4 text-[#141414]" />
+                   <span className="text-sm font-black">{user.playStyle ? t(`profile.playStyles.${user.playStyle}`) : t('profile.playStyles.Casual')}</span>
+                </div>
+             </div>
+             <div className="bg-white p-4 rounded-2xl border border-[#141414]/5 shadow-sm">
+                <p className="text-[10px] font-black uppercase opacity-40 mb-2">{t('profile.reliability')}</p>
+                <div className="flex items-center gap-2">
+                   <Shield className="w-4 h-4 text-blue-500" />
+                   <span className="text-sm font-black text-blue-600">{user.reliabilityStatus ? t(`profile.reliabilityStatus.${user.reliabilityStatus}`) : t('profile.reliabilityStatus.New Player')}</span>
+                </div>
+             </div>
+          </div>
+
           <div className="space-y-4">
-            <h3 className="text-xs font-black uppercase tracking-widest opacity-40">Bio</h3>
+            <h3 className="text-xs font-black uppercase tracking-widest opacity-40">{t('profile.bio')}</h3>
             <p className="text-sm opacity-70 leading-relaxed font-medium bg-white/50 p-4 rounded-2xl italic border border-[#141414]/5">
-              "{user.bio || 'This player hasn\'t written a bio yet.'}"
+              "{user.bio || (lang === 'hu' ? 'Ez a játékos még nem írt bemutatkozást.' : 'This player hasn\'t written a bio yet.')}"
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div className="space-y-4">
               <h3 className="text-xs font-black uppercase tracking-widest opacity-40 flex items-center gap-2">
-                <BookOpen className="w-3 h-3" /> Languages
+                <BookOpen className="w-3 h-3" /> {t('profile.languages')}
               </h3>
               <div className="flex flex-wrap gap-2">
-                {user.languages?.length ? user.languages.map(lang => (
-                   <span key={lang} className="px-3 py-1 bg-white border border-[#141414]/5 rounded-xl text-[10px] font-bold">{lang}</span>
-                )) : <span className="text-[10px] opacity-30 italic">Not set</span>}
+                {user.languages?.length ? user.languages.map(lang_val => (
+                   <span key={lang_val} className="px-3 py-1 bg-white border border-[#141414]/5 rounded-xl text-[10px] font-bold">{t(`profile.languageList.${lang_val}`) || lang_val}</span>
+                )) : <span className="text-[10px] opacity-30 italic">{t('common.noData')}</span>}
               </div>
             </div>
             <div className="space-y-4">
               <h3 className="text-xs font-black uppercase tracking-widest opacity-40 flex items-center gap-2">
-                <Smartphone className="w-3 h-3" /> Social
+                <Smartphone className="w-3 h-3" /> {t('profile.socialLinks')}
               </h3>
               <div className="flex gap-3">
                 {(!user.privacySettings || user.privacySettings.showSocialLinks) ? (
@@ -3054,16 +3272,29 @@ function ProfileDrawer({
                       </a>
                     )}
                     {!user.socialLinks?.instagram && !user.socialLinks?.facebook && (
-                      <span className="text-[10px] opacity-30 italic">Not shared</span>
+                      <span className="text-[10px] opacity-30 italic">{t('profile.privacy')}</span>
                     )}
                   </>
                 ) : (
                    <div className="flex items-center gap-1 opacity-20">
                      <EyeOff className="w-3 h-3" />
-                     <span className="text-[10px] font-bold uppercase">Private</span>
+                     <span className="text-[10px] font-bold uppercase">{t('profile.privacy')}</span>
                    </div>
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-xs font-black uppercase tracking-widest opacity-40 flex items-center gap-2">
+               <Target className="w-3 h-3" /> {t('profile.interests')}
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {user.interests?.length ? user.interests.map(interest => (
+                 <span key={interest} className="px-3 py-1.5 bg-white border border-[#141414]/5 rounded-xl text-[10px] font-bold uppercase tracking-wider">
+                   {t(`profile.interestsList.${interest}`) || interest}
+                 </span>
+              )) : <span className="text-[10px] opacity-30 italic">{t('common.noData')}</span>}
             </div>
           </div>
 
@@ -3077,7 +3308,7 @@ function ProfileDrawer({
             ) : (
               <div className="p-8 text-center bg-[#141414]/5 rounded-[32px] border border-dashed border-[#141414]/10">
                 <EyeOff className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-30">Ez az előzmény privát</p>
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-30">{lang === 'hu' ? 'Ez az előzmény privát' : 'This history is private'}</p>
               </div>
             )}
           </div>
@@ -3212,7 +3443,7 @@ function LevelTutorial({ onClose, t }: { onClose: () => void, t: (key: string) =
             onClick={onClose}
             className="w-full mt-8 bg-[#141414] text-white py-4 rounded-2xl font-black uppercase tracking-widest hover:bg-[#252525] transition-colors"
           >
-            Értem
+            {t('common.gotIt')}
           </button>
         </div>
       </motion.div>
@@ -3288,7 +3519,7 @@ function CreateGroupModal({
                 onChange={e => setFormData({ ...formData, recommendedLevel: e.target.value as SkillLevel })}
                 className="w-full bg-[#141414]/5 border-none rounded-xl py-3 px-4 text-xs font-bold focus:ring-1 focus:ring-[#E2FF3B] outline-none appearance-none"
               >
-                {Object.values(SkillLevel).map(lvl => <option key={lvl} value={lvl}>{lvl}</option>)}
+                {Object.values(SkillLevel).map(lvl => <option key={lvl} value={lvl}>{t(`profile.levels.${lvl}`)}</option>)}
               </select>
             </div>
           </div>
@@ -3304,7 +3535,7 @@ function CreateGroupModal({
                     formData.visibility === v ? 'bg-[#141414] text-[#E2FF3B]' : 'bg-[#141414]/5 text-[#141414]/30'
                   }`}
                 >
-                  {v}
+                  {v === 'public' ? t('games.public') : t('profile.privacy')}
                 </button>
               ))}
             </div>

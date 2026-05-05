@@ -20,6 +20,7 @@ async function startServer() {
       id: "1", 
       name: "Marc", 
       email: "marc@padel.com",
+      password: "password123",
       phone: "+34 600 000 001",
       skillLevel: "Gold", 
       location: { lat: 41.3851, lng: 2.1734, city: "Barcelona" }, 
@@ -45,6 +46,7 @@ async function startServer() {
       id: "2", 
       name: "Ana", 
       email: "ana@padel.com",
+      password: "password123",
       phone: "+34 600 000 002",
       skillLevel: "Silver", 
       location: { lat: 41.3879, lng: 2.1699, city: "Barcelona" }, 
@@ -69,6 +71,7 @@ async function startServer() {
       id: "3", 
       name: "Joan", 
       email: "joan@padel.com",
+      password: "password123",
       phone: "+34 600 000 003",
       skillLevel: "Bronze", 
       location: { lat: 41.3947, lng: 2.1488, city: "Barcelona" }, 
@@ -247,7 +250,7 @@ async function startServer() {
   });
 
   app.post("/api/register", (req, res) => {
-    const { name, email, phone } = req.body;
+    const { name, email, phone, password } = req.body;
     
     // Check if user already exists with this email or phone (simple check for demo)
     const existing = users.find(u => u.email === email || u.phone === phone);
@@ -260,6 +263,7 @@ async function startServer() {
       name,
       email,
       phone,
+      password,
       skillLevel: "Bronze", // Default
       location: { lat: 41.3851, lng: 2.1734, city: "Barcelona" }, // Default
       bio: "",
@@ -271,6 +275,19 @@ async function startServer() {
 
     users.push(newUser);
     res.status(201).json(newUser);
+  });
+
+  app.post("/api/login", (req, res) => {
+    const { email, password } = req.body;
+    const user = users.find(u => u.email === email && u.password === password);
+    
+    if (!user) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+    
+    // Don't send password back
+    const { password: _, ...userWithoutPassword } = user;
+    res.json(userWithoutPassword);
   });
   
   app.post("/api/users/:targetId/block", (req, res) => {

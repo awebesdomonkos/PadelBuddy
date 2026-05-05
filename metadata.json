@@ -1,5 +1,5 @@
 {
-  "name": "PadelBuddy",
+  "name": "FindYour PadelBuddy",
   "description": "Your ultimate padel companion - find partners, create matches, and join the local community.",
   "requestFramePermissions": ["geolocation"],
   "majorCapabilities": []

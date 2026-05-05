@@ -29,7 +29,9 @@ export const translations: Record<Language, any> = {
       noMatchesFound: "Nincs találat a szűrők alapján.",
       enter: "Belépés a körbe",
       all: "Mind",
-      active: "Aktív"
+      active: "Aktív",
+      datetime: "Dátum és idő",
+      gotIt: "Értem"
     },
     nav: {
       games: "Játékok",
@@ -37,16 +39,21 @@ export const translations: Record<Language, any> = {
       groups: "Csoportok",
       profile: "Profil"
     },
+    players: {
+      subTitle: "Találj partnereket a közeledben."
+    },
     auth: {
-      title: "PadelBuddy",
+      title: "FindYour PadelBuddy",
       subTitle: "Csatlakozz a helyi padel közösséghez",
       nameLabel: "Neved",
       emailLabel: "Email címed",
       phoneLabel: "Telefonszámod",
+      passwordLabel: "Jelszó",
       levelLabel: "Szinted",
       namePlaceholder: "pl. Roger",
       emailPlaceholder: "email@pelda.hu",
       phonePlaceholder: "+36 30 123 4567",
+      passwordPlaceholder: "Legalább 6 karakter",
       secure: "Biztonságos és zárt közösség",
       register: "Regisztráció",
       login: "Belépés",
@@ -89,6 +96,7 @@ export const translations: Record<Language, any> = {
       noMatchHistory: "Nincs meccselőzmény",
       playStyle: "Stílus",
       gamesAttended: "meccsen vett részt",
+      status: "LFG Státusz",
       levels: {
         Bronze: "Bronz",
         Silver: "Ezüst",
@@ -107,11 +115,54 @@ export const translations: Record<Language, any> = {
       },
       levelTutorialTitle: "Képességszintek",
       levelTutorialSub: "Padel szintmagyarázat",
-      exp: {
+      experienceLevels: {
         "Less than 6 months": "Kevesebb mint 6 hónap",
         "6-12 months": "6-12 hónap",
         "1-2 years": "1-2 év",
         "2+ years": "Több mint 2 év"
+      },
+      playTimesList: {
+        "Morning": "Reggel",
+        "Afternoon": "Délután",
+        "Evening": "Este",
+        "Weekend": "Hétvége",
+        "Weekdays": "Hétköznap"
+      },
+      languageList: {
+        "Hungarian": "Magyar",
+        "English": "Angol",
+        "Spanish": "Spanyol",
+        "German": "Német",
+        "French": "Francia",
+        "Italian": "Olasz"
+      },
+      reliabilityStatus: {
+        "New Player": "Új játékos",
+        "Regularly appears": "Rendszeresen megjelenik",
+        "Very reliable": "Nagyon megbízható",
+        "Unreliable": "Kevésbé megbízható"
+      },
+      lfg: {
+        "None": "Nincs",
+        "Today": "Ma játszanék",
+        "Tomorrow": "Holnap játszanék",
+        "Weekend": "Hétvégén játszanék",
+        "Now": "Azonnal játszanék"
+      },
+      playStyles: {
+        "Casual": "Alkalmi",
+        "Competitive": "Versenyzői",
+        "Technical": "Technikai",
+        "Power": "Erőjátékos"
+      },
+      interestsList: {
+        "Competitive": "Versenyzői",
+        "Social Padel": "Közösségi Padel",
+        "Morning Matches": "Reggeli meccsek",
+        "Evening Matches": "Esti meccsek",
+        "Mixed Matches": "Vegyes meccsek",
+        "Tournaments": "Versenyek",
+        "Coaching": "Edzés"
       }
     },
     games: {
@@ -123,6 +174,7 @@ export const translations: Record<Language, any> = {
       location: "Helyszín",
       level: "Szint",
       type: "Típus",
+      note: "Megjegyzés",
       status: "Státusz",
       joined: "Csatlakozva",
       required: "Szükséges",
@@ -145,7 +197,20 @@ export const translations: Record<Language, any> = {
       missed: "Hiányzott",
       matchChat: "Meccs Chat",
       groupChat: "Csoport Chat",
-      chatShort: "Chat"
+      chatShort: "Chat",
+      gameTypes: {
+        "Friendly": "Baráti",
+        "Competitive": "Verseny",
+        "Training": "Edzés"
+      },
+      filters: {
+        all: "Mind",
+        today: "Ma",
+        tomorrow: "Holnap",
+        weekend: "Hétvége",
+        lastminute: "Last Minute 🔥"
+      },
+      recommendedLevel: "Ajánlott szint"
     },
     groups: {
       title: "Csoportok",
@@ -196,6 +261,27 @@ export const translations: Record<Language, any> = {
       players: "Players",
       groups: "Groups",
       profile: "Profile"
+    },
+    auth: {
+      title: "FindYour PadelBuddy",
+      subTitle: "Join the local padel community",
+      nameLabel: "Name",
+      emailLabel: "Email address",
+      phoneLabel: "Phone number",
+      passwordLabel: "Password",
+      levelLabel: "Level",
+      namePlaceholder: "e.g. Roger",
+      emailPlaceholder: "email@example.com",
+      phonePlaceholder: "+36 30 123 4567",
+      passwordPlaceholder: "At least 6 characters",
+      secure: "Secure and closed community",
+      register: "Register",
+      login: "Login",
+      noProfile: "Don't have a profile yet?",
+      alreadyRegistered: "Already registered?",
+      completeProfileTitle: "Complete Profile",
+      completeProfileSub: "A few last touches before you hit the court",
+      finishRegistration: "Finish Registration"
     },
     profile: {
       title: "Profile",
