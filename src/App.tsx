@@ -537,7 +537,7 @@ export default function App() {
               <div className="w-8 h-8 bg-[#141414] rounded-full flex items-center justify-center">
                 <TrendingUp className="text-[#E2FF3B] w-5 h-5" />
               </div>
-              <span className="font-bold text-xl tracking-tight">PadelMatch</span>
+              <span className="font-bold text-xl tracking-tight">PadelBuddy</span>
             </div>
 
             {/* Desktop Nav */}
@@ -1778,7 +1778,7 @@ function AuthScreen({ onRegister, onShowTutorial }: { onRegister: () => void, on
             <Target className="w-8 h-8 text-[#141414]" />
           </div>
           <h1 className="text-7xl font-black uppercase italic leading-[0.8] tracking-tighter mb-4">
-            Padel<br />Match
+            Padel<br />Buddy
           </h1>
           <p className="text-xl font-medium opacity-60 leading-tight pr-12">
             {t('auth.subTitle')}

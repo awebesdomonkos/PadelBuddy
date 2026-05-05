@@ -38,7 +38,7 @@ export const translations: Record<Language, any> = {
       profile: "Profil"
     },
     auth: {
-      title: "Padel Match",
+      title: "PadelBuddy",
       subTitle: "Csatlakozz a helyi padel közösséghez",
       nameLabel: "Neved",
       emailLabel: "Email címed",

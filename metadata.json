@@ -1,6 +1,6 @@
 {
-  "name": "PadelMatch",
-  "description": "Quickly find padel partners, create matches, and join nearby games based on skill level.",
+  "name": "PadelBuddy",
+  "description": "Your ultimate padel companion - find partners, create matches, and join the local community.",
   "requestFramePermissions": ["geolocation"],
   "majorCapabilities": []
 }
