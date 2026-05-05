@@ -1,0 +1,6 @@
+{
+  "name": "PadelMatch",
+  "description": "Quickly find padel partners, create matches, and join nearby games based on skill level.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}
