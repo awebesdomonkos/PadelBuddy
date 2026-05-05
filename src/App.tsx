@@ -60,7 +60,8 @@ const MOCK_CURRENT_USER: User = {
   skillLevel: SkillLevel.Silver,
   location: { lat: 41.3851, lng: 2.1734, city: 'Barcelona' },
   bio: 'Just looking for some fun padel matches!',
-  friendIds: []
+  friendIds: [],
+  blockedUserIds: []
 };
 
 export default function App() {
@@ -76,7 +77,7 @@ export default function App() {
   
   // Filters
   const [gameFilter, setGameFilter] = useState<'all' | 'today' | 'tomorrow' | 'weekend' | 'lastminute'>('all');
-  const [playerFilter, setPlayerFilter] = useState<'all' | 'active' | 'lfg'>('all');
+  const [playerFilter, setPlayerFilter] = useState<'all' | 'active' | 'lfg' | 'friends'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modals / Overlays
@@ -248,6 +249,32 @@ export default function App() {
       }
     } catch (err) {
       console.error("Failed to delete game", err);
+    }
+  };
+
+  const handleToggleBlock = async (targetId: string) => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch(`/api/users/${targetId}/block`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id })
+      });
+      if (res.ok) {
+        const updatedUser = await res.json();
+        setCurrentUser(updatedUser);
+        localStorage.setItem('padel_user', JSON.stringify(updatedUser));
+        
+        // If we update current user, we might need to refresh data to filter out newly blocked user from UI
+        fetchData();
+        
+        // If the blocked player was selected, maybe close the profile
+        if (selectedPlayer?.id === targetId) {
+          setSelectedPlayer(null);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to toggle block", err);
     }
   };
 
@@ -604,6 +631,7 @@ export default function App() {
                 ) : (
                   (() => {
                     const filteredGames = games.filter(g => {
+                      if (currentUser.blockedUserIds?.includes(g.creatorId)) return false;
                       const date = new Date(g.datetime);
                       const now = new Date();
                       
@@ -699,16 +727,16 @@ export default function App() {
                   />
                 </div>
 
-                <div className="flex gap-2">
-                  {(['all', 'active', 'lfg'] as const).map(f => (
+                <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
+                  {(['all', 'active', 'lfg', 'friends'] as const).map(f => (
                     <button
                       key={f}
                       onClick={() => setPlayerFilter(f)}
-                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                      className={`whitespace-nowrap px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                         playerFilter === f ? 'bg-[#141414] text-[#E2FF3B]' : 'bg-[#141414]/5 text-[#141414]/40'
                       }`}
                     >
-                      {f === 'lfg' ? t('profile.status') : t(`common.${f}`)}
+                      {f === 'lfg' ? t('profile.status') : f === 'friends' ? t('profile.friends') : t(`common.${f}`)}
                     </button>
                   ))}
                 </div>
@@ -717,6 +745,7 @@ export default function App() {
               <div className="grid grid-cols-1 gap-4">
                 {players
                   .filter(p => p.id !== currentUser.id)
+                  .filter(p => !currentUser.blockedUserIds?.includes(p.id))
                   .filter(p => {
                     const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                                      p.location.city.toLowerCase().includes(searchQuery.toLowerCase());
@@ -729,6 +758,7 @@ export default function App() {
                       return lastActive > anHourAgo;
                     }
                     if (playerFilter === 'lfg') return p.lfgStatus && p.lfgStatus !== LFGStatus.None;
+                    if (playerFilter === 'friends') return currentUser.friendIds?.includes(p.id);
                     
                     return true;
                   })
@@ -1087,6 +1117,7 @@ export default function App() {
             onClose={() => setSelectedPlayer(null)}
             onFavorite={handleToggleFavorite}
             onSendFriendRequest={handleSendFriendRequest}
+            onBlock={handleToggleBlock}
           />
         )}
         {isResultModalOpen && selectedGame && (
@@ -2879,18 +2910,21 @@ function ProfileDrawer({
   games,
   onClose,
   onFavorite,
-  onSendFriendRequest
+  onSendFriendRequest,
+  onBlock
 }: { 
   user: User, 
   currentUser: User,
   games: Game[],
   onClose: () => void,
   onFavorite: (id: string) => void,
-  onSendFriendRequest: (id: string) => void
+  onSendFriendRequest: (id: string) => void,
+  onBlock: (id: string) => void
 }) {
   const { t } = useI18n(currentUser.languagePreference || 'hu');
   const userGames = games.filter(g => g.joinedPlayers.includes(user.id));
   const isFriend = currentUser.friendIds?.includes(user.id);
+  const isBlocked = currentUser.blockedUserIds?.includes(user.id);
   
   return (
     <div className="fixed inset-0 z-[110] flex justify-end">
@@ -2925,7 +2959,7 @@ function ProfileDrawer({
                  >
                    <Heart className={`w-5 h-5 ${currentUser.favoritePlayerIds?.includes(user.id) ? 'fill-red-500 text-red-500' : 'text-[#141414]/20'}`} />
                  </button>
-                 {!isFriend && (
+                 {!isFriend && !isBlocked && (
                    <button 
                      onClick={() => onSendFriendRequest(user.id)}
                      className="px-4 py-2 bg-[#141414] text-[#E2FF3B] rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all"
@@ -2945,6 +2979,30 @@ function ProfileDrawer({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-12">
+          {/* Block Action */}
+          <div className="flex gap-2">
+            <button 
+              onClick={() => onBlock(user.id)}
+              className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
+                isBlocked 
+                ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' 
+                : 'bg-white border border-[#141414]/5 text-[#141414]/40 hover:bg-red-50 hover:text-red-500'
+              }`}
+            >
+              {isBlocked ? (
+                <>
+                  <Eye className="w-3 h-3" />
+                  {t('profile.unblock')}
+                </>
+              ) : (
+                <>
+                  <EyeOff className="w-3 h-3" />
+                  {t('profile.block')}
+                </>
+              )}
+            </button>
+          </div>
+
           {/* Stats Bar */}
           <div className="grid grid-cols-3 gap-3">
              {[

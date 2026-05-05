@@ -71,6 +71,7 @@ export interface User {
   languages?: string[];
   friendIds: string[];
   friendRequests?: string[]; // IDs of FriendRequest
+  blockedUserIds: string[];
   socialLinks?: {
     instagram?: string;
     facebook?: string;

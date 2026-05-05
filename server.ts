@@ -37,6 +37,7 @@ async function startServer() {
       experience: "2+ years",
       languages: ["Catalan", "Spanish", "English"],
       friendIds: [],
+      blockedUserIds: [],
       socialLinks: { instagram: "marc_padel", website: "https://marc.com" },
       privacySettings: { publicProfile: true, showMatchHistory: true, showSocialLinks: true }
     },
@@ -61,6 +62,7 @@ async function startServer() {
       experience: "1-2 years",
       languages: ["Spanish", "English"],
       friendIds: [],
+      blockedUserIds: [],
       privacySettings: { publicProfile: true, showMatchHistory: true, showSocialLinks: false }
     },
     { 
@@ -81,6 +83,7 @@ async function startServer() {
       experience: "Less than 6 months",
       languages: ["Catalan", "Spanish"],
       friendIds: [],
+      blockedUserIds: [],
       privacySettings: { publicProfile: true, showMatchHistory: false, showSocialLinks: false }
     },
   ];
@@ -261,12 +264,42 @@ async function startServer() {
       location: { lat: 41.3851, lng: 2.1734, city: "Barcelona" }, // Default
       bio: "",
       friendIds: [],
+      blockedUserIds: [],
       privacySettings: { publicProfile: true, showMatchHistory: true, showSocialLinks: false },
       lastActive: new Date().toISOString()
     };
 
     users.push(newUser);
     res.status(201).json(newUser);
+  });
+  
+  app.post("/api/users/:targetId/block", (req, res) => {
+    const { targetId } = req.params;
+    const { userId } = req.body;
+    
+    const userIndex = users.findIndex(u => u.id === userId);
+    if (userIndex === -1) return res.status(404).json({ error: "User not found" });
+    
+    const user = users[userIndex];
+    if (!user.blockedUserIds) user.blockedUserIds = [];
+    
+    if (user.blockedUserIds.includes(targetId)) {
+      // Unblock
+      user.blockedUserIds = user.blockedUserIds.filter(id => id !== targetId);
+    } else {
+      // Block
+      user.blockedUserIds.push(targetId);
+      // Remove from friends if they were friends
+      user.friendIds = user.friendIds.filter(id => id !== targetId);
+      
+      // Also remove current user from target's friends
+      const targetIndex = users.findIndex(u => u.id === targetId);
+      if (targetIndex !== -1) {
+        users[targetIndex].friendIds = users[targetIndex].friendIds.filter(id => id !== userId);
+      }
+    }
+    
+    res.json(user);
   });
 
   app.get("/api/users", (req, res) => {
