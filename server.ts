@@ -218,6 +218,11 @@ async function startServer() {
     const toUser = users.find(u => u.id === toUserId);
 
     if (!fromUser || !toUser) return res.status(404).json({ error: "User not found" });
+    
+    // Check if request already exists
+    if (friendRequests.find(r => r.fromUserId === fromUserId && r.toUserId === toUserId && r.status === 'pending')) {
+      return res.status(400).json({ error: "Request already pending" });
+    }
 
     const request = {
       id: Math.random().toString(36).substr(2, 9),
@@ -228,6 +233,19 @@ async function startServer() {
     };
 
     friendRequests.push(request);
+
+    // Add notification for the target user
+    notifications.push({
+      id: Math.random().toString(36).substr(2, 9),
+      userId: toUserId,
+      type: "new_request",
+      title: "Barátfelkérés!",
+      message: `${fromUser.name} barátnak jelölt.`,
+      friendRequestId: request.id,
+      timestamp: new Date().toISOString(),
+      read: false
+    });
+
     res.json(request);
   });
 
@@ -249,31 +267,35 @@ async function startServer() {
       }
     }
 
-    res.json(request);
+    // Mark notification as read
+    const notif = notifications.find(n => n.friendRequestId === requestId);
+    if (notif) notif.read = true;
+
+    res.json({ success: true });
   });
 
   app.post("/api/register", (req, res) => {
     const { name, username, email, phone, password } = req.body;
-    
+    const normalizedEmail = email?.toLowerCase().trim();
+    const normalizedUsername = username?.toLowerCase().trim();
+    const normalizedPhone = phone?.replace(/[^\d+]/g, '');
+
     // Check if user already exists
-    if (users.find(u => u.email === email)) {
+    if (users.find(u => u.email?.toLowerCase().trim() === normalizedEmail)) {
       return res.status(400).json({ error: "EMAIL_TAKEN" });
     }
-    if (users.find(u => u.phone === phone)) {
+    if (users.find(u => u.phone?.replace(/[^\d+]/g, '') === normalizedPhone)) {
       return res.status(400).json({ error: "PHONE_TAKEN" });
     }
-    if (users.find(u => u.username === username)) {
+    if (users.find(u => u.username?.toLowerCase().trim() === normalizedUsername)) {
       return res.status(400).json({ error: "USERNAME_TAKEN" });
-    }
-    if (users.find(u => u.name === name)) {
-      return res.status(400).json({ error: "NAME_TAKEN" });
     }
 
     const newUser: any = {
       id: Math.random().toString(36).substr(2, 9),
-      username,
+      username: normalizedUsername,
       name,
-      email,
+      email: normalizedEmail,
       phone,
       password,
       skillLevel: "Bronze", // Default
@@ -291,7 +313,8 @@ async function startServer() {
 
   app.post("/api/login", (req, res) => {
     const { email, password } = req.body;
-    const user = users.find(u => u.email === email);
+    const normalizedEmail = email?.toLowerCase();
+    const user = users.find(u => u.email?.toLowerCase() === normalizedEmail);
     
     if (!user) {
       return res.status(401).json({ error: "USER_NOT_FOUND" });

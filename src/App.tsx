@@ -66,7 +66,7 @@ const MOCK_CURRENT_USER: User = {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'games' | 'players' | 'profile' | 'create' | 'groups'>('games');
+  const [activeTab, setActiveTab] = useState<'games' | 'players' | 'profile' | 'create' | 'groups' | 'mygames'>('games');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [games, setGames] = useState<Game[]>([]);
@@ -165,6 +165,19 @@ export default function App() {
       setGroups(Array.isArray(groupsData) ? groupsData : []);
       setClubs(Array.isArray(clubsData) ? clubsData : []);
       setNotifications(Array.isArray(notifsData) ? notifsData : []);
+
+      if (currentUser?.id) {
+        const updatedMe = (playersData as User[]).find(u => u.id === currentUser.id);
+        if (updatedMe) {
+          setCurrentUser(updatedMe);
+          localStorage.setItem('padel_user', JSON.stringify(updatedMe));
+        } else {
+          // User exists locally but not on server (e.g. server reset)
+          setCurrentUser(null);
+          localStorage.removeItem('padel_user');
+          setAuthMode('landing');
+        }
+      }
     } catch (err) {
       console.error("Failed to fetch data", err);
     } finally {
@@ -205,7 +218,7 @@ export default function App() {
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: authForm.email, password: authForm.password })
+        body: JSON.stringify({ email: authForm.email.toLowerCase().trim(), password: authForm.password })
       });
       if (res.ok) {
         const user = await res.json();
@@ -554,7 +567,15 @@ export default function App() {
         />
       );
     }
-    return <AuthScreen onSelectMode={setAuthMode} t={t} />;
+    return (
+      <AuthScreen 
+        onSelectMode={(mode) => {
+          setAuthError(null);
+          setAuthMode(mode);
+        }} 
+        t={t} 
+      />
+    );
   }
 
   if (isCompletingProfile && currentUser) {
@@ -614,6 +635,12 @@ export default function App() {
                 className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'groups' ? 'text-[#141414] bg-[#E2FF3B]' : 'text-[#141414]/40 hover:text-[#141414]'}`}
               >
                 {t('nav.groups')}
+              </button>
+              <button 
+                onClick={() => setActiveTab('mygames')}
+                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'mygames' ? 'text-[#141414] bg-[#E2FF3B]' : 'text-[#141414]/40 hover:text-[#141414]'}`}
+              >
+                {t('nav.myGames') || 'Saját meccsek'}
               </button>
             </nav>
           </div>
@@ -685,8 +712,19 @@ export default function App() {
                   <div className="md:col-span-2 lg:col-span-3 py-20 text-center font-mono text-xs opacity-50 uppercase tracking-widest">{t('common.scanning')}</div>
                 ) : (
                   (() => {
-                    const filteredGames = games.filter(g => {
+                    const filteredGames = (games || []).filter(g => {
                       if (currentUser.blockedUserIds?.includes(g.creatorId)) return false;
+
+                      // Visibility controls
+                      if (g.visibility === 'group-only' && g.groupId) {
+                        const group = (groups || []).find(gr => gr.id === g.groupId);
+                        if (!group?.memberIds.includes(currentUser.id) && g.creatorId !== currentUser.id) return false;
+                      }
+                      
+                      if (g.visibility === 'invite-only') {
+                        if (!g.invitedUserIds?.includes(currentUser.id) && g.creatorId !== currentUser.id) return false;
+                      }
+
                       const date = new Date(g.datetime);
                       const now = new Date();
                       
@@ -799,7 +837,7 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {players
+                {(players || [])
                   .filter(p => p.id !== currentUser.id)
                   .filter(p => !currentUser.blockedUserIds?.includes(p.id))
                   .filter(p => {
@@ -863,8 +901,8 @@ export default function App() {
               <h2 className="text-3xl font-black uppercase tracking-tight mb-8">{t('games.createGame')}</h2>
               <CreateGameForm 
                 creatorId={currentUser.id} 
-                groups={groups.filter(g => g.memberIds.includes(currentUser.id))}
-                friends={players.filter(p => currentUser.friendIds?.includes(p.id))}
+                groups={(groups || []).filter(g => g.memberIds.includes(currentUser.id))}
+                allUsers={players || []}
                 t={t}
                 lang={lang}
                 gameToEdit={gameToEdit}
@@ -875,6 +913,74 @@ export default function App() {
                 }} 
                 onShowTutorial={() => setIsLevelTutorialOpen(true)}
               />
+            </motion.div>
+          )}
+
+          {activeTab === 'mygames' && (
+            <motion.div
+              key="mygames"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="space-y-6"
+            >
+              <div className="flex justify-between items-end mb-6">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-black uppercase italic tracking-tighter">{t('nav.myGames') || 'Saját meccsek'}</h2>
+                  <p className="text-xs sm:text-sm opacity-60">{t('profile.matchHistory')}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {(games || []).filter(g => g.creatorId === currentUser?.id || g.joinedPlayers.includes(currentUser?.id || '')).length > 0 ? (
+                  (games || [])
+                    .filter(g => g.creatorId === currentUser?.id || g.joinedPlayers.includes(currentUser?.id || ''))
+                    .sort((a, b) => new Date(b.datetime).getTime() - new Date(a.datetime).getTime())
+                    .map(game => (
+                      <GameCard 
+                        key={game.id} 
+                        game={game}
+                        isJoined={game.joinedPlayers.includes(currentUser?.id || '')}
+                        requestStatus={game.requests?.find(r => r.userId === currentUser?.id)?.status}
+                        isOwner={game.creatorId === currentUser?.id}
+                        t={t}
+                        onShowDetails={() => setSelectedGameDetail(game)}
+                        onJoin={() => handleJoinGame(game.id)}
+                        onOpenChat={() => {
+                          setSelectedGame(game);
+                          setIsChatOpen(true);
+                        }}
+                        onEdit={() => {
+                          setGameToEdit(game);
+                          setActiveTab('create');
+                        }}
+                        onDelete={() => setGameIdToDelete(game.id)}
+                        onLeave={() => handleLeaveGame(game.id)}
+                        onRepeat={() => {
+                          const newGame = { ...game, id: undefined, datetime: new Date(Date.now() + 86400000).toISOString(), joinedPlayers: [currentUser!.id], requests: [], chat: [] };
+                          setGameToEdit(newGame as any);
+                          setActiveTab('create');
+                        }}
+                        onConfirmAttendance={() => handleConfirmAttendance(game.id)}
+                        onRecordResult={() => {
+                          setSelectedGame(game);
+                          setIsResultModalOpen(true);
+                        }}
+                      />
+                    ))
+                ) : (
+                  <div className="col-span-full py-20 text-center bg-white rounded-[40px] border border-[#141414]/5 shadow-sm">
+                    <Calendar className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                    <p className="text-sm font-bold opacity-40 uppercase tracking-widest">{t('common.noData')}</p>
+                    <button 
+                      onClick={() => setActiveTab('games')}
+                      className="mt-4 px-6 py-2 bg-[#141414] text-[#E2FF3B] rounded-xl text-xs font-black uppercase tracking-widest"
+                    >
+                      {t('games.findGame')}
+                    </button>
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -910,7 +1016,7 @@ export default function App() {
                       </span>
                       {currentUser.lfgStatus && currentUser.lfgStatus !== LFGStatus.None && (
                         <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> {currentUser.lfgStatus}
+                          <Clock className="w-3 h-3" /> {currentUser.lfgStatus ? t(`profile.lfg.${currentUser.lfgStatus}`) : t('profile.lfg.None')}
                         </span>
                       )}
                     </div>
@@ -920,7 +1026,7 @@ export default function App() {
                     <div className="grid grid-cols-2 gap-4 pb-4 border-b border-[#141414]/5">
                       <div>
                         <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-1">{t('profile.playStyle')}</h3>
-                        <p className="text-sm font-bold">{currentUser.playStyle || 'Casual'}</p>
+                        <p className="text-sm font-bold">{currentUser.playStyle ? t(`profile.playStyles.${currentUser.playStyle}`) : t('profile.playStyles.Casual')}</p>
                       </div>
                       <div>
                         <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-1">{t('profile.reliability')}</h3>
@@ -929,7 +1035,7 @@ export default function App() {
                              currentUser.reliabilityStatus === 'Unreliable' ? 'text-red-500' : 
                              currentUser.reliabilityStatus === 'Very Reliable' ? 'text-green-600' : 'text-blue-600'
                            }`}>
-                             {currentUser.reliabilityStatus || 'New Player'}
+                             {t(`profile.reliabilityStatus.${currentUser.reliabilityStatus || 'New Player'}`)}
                            </p>
                            {currentUser.completedGamesCount !== undefined && (
                              <span className="text-[9px] opacity-40 font-bold uppercase">{currentUser.attendedGamesCount || 0} / {currentUser.completedGamesCount} {t('profile.gamesAttended')}</span>
@@ -945,7 +1051,7 @@ export default function App() {
                       </div>
                       <div className="text-center p-2 bg-[#141414]/5 rounded-2xl">
                         <p className="text-[8px] font-black uppercase opacity-40">{t('nav.groups')}</p>
-                        <p className="text-xl font-black">{groups.filter(g => g.memberIds.includes(currentUser.id)).length}</p>
+                        <p className="text-xl font-black">{(groups || []).filter(g => g.memberIds.includes(currentUser.id)).length}</p>
                       </div>
                       <div className="text-center p-2 bg-[#141414]/5 rounded-2xl">
                         <p className="text-[8px] font-black uppercase opacity-40">{t('profile.friends')}</p>
@@ -964,7 +1070,7 @@ export default function App() {
                         </h3>
                       </div>
                       <div className="grid grid-cols-1 gap-2">
-                        {players.filter(p => currentUser.friendIds?.includes(p.id)).map(friend => (
+                        {(players || []).filter(p => currentUser.friendIds?.includes(p.id)).map(friend => (
                           <div key={friend.id} className="flex items-center justify-between p-3 bg-[#141414]/5 rounded-2xl">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-full bg-[#141414] overflow-hidden flex items-center justify-center">
@@ -1046,7 +1152,7 @@ export default function App() {
                           <History className="w-3 h-3" /> {t('profile.matchHistory')}
                         </h3>
                       </div>
-                      <MatchHistory games={games.filter(g => g.joinedPlayers.includes(currentUser.id))} />
+                      <MatchHistory games={(games || []).filter(g => g.joinedPlayers.includes(currentUser.id))} />
                     </div>
 
                     <div className="pt-6 border-t border-[#141414]/5">
@@ -1119,6 +1225,12 @@ export default function App() {
             label={t('nav.groups')} 
           />
           <NavBtn 
+            active={activeTab === 'mygames'} 
+            onClick={() => setActiveTab('mygames')} 
+            icon={<Calendar className="w-5 h-5" />} 
+            label={t('nav.myGames') || 'Saját meccsek'} 
+          />
+          <NavBtn 
             active={activeTab === 'profile'} 
             onClick={() => setActiveTab('profile')} 
             icon={<UserIcon className="w-5 h-5" />} 
@@ -1161,8 +1273,9 @@ export default function App() {
           <NotificationsDrawer 
             notifications={notifications}
             t={t}
+            onFriendResponse={handleFriendResponse}
             onRead={(id) => {
-              // Mark as read logic
+              // Mark as read locally or call API
               setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
             }}
             onClose={() => setIsNotificationsOpen(false)}
@@ -1597,7 +1710,7 @@ function PlayerCard({
 function CreateGameForm({ 
   creatorId, 
   groups,
-  friends,
+  allUsers,
   onSuccess,
   t,
   lang,
@@ -1606,7 +1719,7 @@ function CreateGameForm({
 }: { 
   creatorId: string, 
   groups: Group[],
-  friends: User[],
+  allUsers: User[],
   onSuccess: () => void,
   t: (key: string) => string,
   lang: string,
@@ -1625,6 +1738,8 @@ function CreateGameForm({
     visibility: 'public' as 'public' | 'group-only' | 'invite-only',
     invitedUserIds: [] as string[]
   });
+
+  const [inviteSearch, setInviteSearch] = useState('');
 
   useEffect(() => {
     if (gameToEdit) {
@@ -1827,7 +1942,7 @@ function CreateGameForm({
         {formData.visibility === 'group-only' && (
           <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
             <label className="text-xs font-bold uppercase tracking-widest opacity-40 px-1">{t('games.selectGroup')}</label>
-            <div className="grid grid-cols-1 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {groups.map(g => (
                 <button
                   key={g.id}
@@ -1839,8 +1954,15 @@ function CreateGameForm({
                     : 'border-[#141414]/5 bg-[#141414]/5'
                   }`}
                 >
-                  <p className="text-sm font-bold">{g.name}</p>
-                  <p className="text-[10px] opacity-40 uppercase font-black">{g.memberIds.length} {t('groups.members')}</p>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#141414] flex items-center justify-center text-[#E2FF3B] font-black italic">
+                      {g.name[0]}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold">{g.name}</p>
+                      <p className="text-[10px] opacity-40 uppercase font-black">{g.memberIds.length} {t('groups.members')}</p>
+                    </div>
+                  </div>
                 </button>
               ))}
               {groups.length === 0 && <p className="text-xs opacity-40 italic">{t('games.noGroups')}</p>}
@@ -1848,35 +1970,79 @@ function CreateGameForm({
           </div>
         )}
 
-        <div className="space-y-2">
-          <label className="text-xs font-bold uppercase tracking-widest opacity-40 px-1">{t('games.inviteFriends') || 'Invite Friends'}</label>
+        <div className="space-y-4">
+          <div className="flex justify-between items-center px-1">
+            <label className="text-xs font-bold uppercase tracking-widest opacity-40">{t('games.inviteFriends') || 'Invite People'}</label>
+            <div className="relative w-32 sm:w-48">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 opacity-30" />
+              <input 
+                type="text"
+                value={inviteSearch}
+                onChange={e => setInviteSearch(e.target.value)}
+                placeholder={t('common.search')}
+                className="w-full bg-[#141414]/5 border-none rounded-xl py-2 pl-8 pr-3 text-[10px] focus:ring-1 focus:ring-[#E2FF3B] outline-none"
+              />
+            </div>
+          </div>
+
           <div className="max-h-48 overflow-y-auto space-y-2 pr-2 scrollbar-none">
-            {friends.map(f => (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => {
-                  const ids = formData.invitedUserIds.includes(f.id)
-                    ? formData.invitedUserIds.filter(id => id !== f.id)
-                    : [...formData.invitedUserIds, f.id];
-                  setFormData({ ...formData, invitedUserIds: ids });
-                }}
-                className={`w-full p-3 rounded-2xl text-left flex items-center justify-between border transition-all ${
-                  formData.invitedUserIds.includes(f.id)
-                  ? 'border-[#E2FF3B] bg-[#E2FF3B]/5 ring-1 ring-[#E2FF3B]' 
-                  : 'border-[#141414]/5 bg-[#141414]/5'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[#141414] overflow-hidden flex items-center justify-center">
-                    {f.avatarUrl ? <img src={f.avatarUrl} className="w-full h-full object-cover" /> : <UserIcon className="w-4 h-4 text-[#E2FF3B]" />}
+            {(() => {
+              const currentUser = allUsers.find(u => u.id === creatorId);
+              const friendIds = currentUser?.friendIds || [];
+              const groupMemberIds = formData.groupId ? (groups.find(g => g.id === formData.groupId)?.memberIds || []) : [];
+              
+              const potentialInvitees = allUsers.filter(u => 
+                u.id !== creatorId && 
+                (
+                  friendIds.includes(u.id) || 
+                  groupMemberIds.includes(u.id) ||
+                  formData.invitedUserIds.includes(u.id)
+                )
+              );
+
+              const filteredInvitees = potentialInvitees.filter(u => 
+                u.name.toLowerCase().includes(inviteSearch.toLowerCase()) ||
+                u.username.toLowerCase().includes(inviteSearch.toLowerCase())
+              );
+
+              if (filteredInvitees.length === 0) {
+                return <p className="text-xs opacity-40 italic text-center py-4">{t('common.noData')}</p>;
+              }
+
+              return filteredInvitees.map(f => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => {
+                    const ids = formData.invitedUserIds.includes(f.id)
+                      ? formData.invitedUserIds.filter(id => id !== f.id)
+                      : [...formData.invitedUserIds, f.id];
+                    setFormData({ ...formData, invitedUserIds: ids });
+                  }}
+                  className={`w-full p-3 rounded-2xl text-left flex items-center justify-between border transition-all ${
+                    formData.invitedUserIds.includes(f.id)
+                    ? 'border-[#E2FF3B] bg-[#E2FF3B]/5 ring-1 ring-[#E2FF3B]' 
+                    : 'border-[#141414]/5 bg-[#141414]/5'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#141414] overflow-hidden flex items-center justify-center border-2 border-white shadow-sm">
+                      {f.avatarUrl ? <img src={f.avatarUrl} className="w-full h-full object-cover" /> : <UserIcon className="w-5 h-5 text-[#E2FF3B]" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold">{f.name}</p>
+                      <div className="flex gap-1">
+                        {friendIds.includes(f.id) && <span className="text-[8px] uppercase font-black px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded-md">Friend</span>}
+                        {groupMemberIds.includes(f.id) && <span className="text-[8px] uppercase font-black px-1.5 py-0.5 bg-purple-100 text-purple-600 rounded-md">Group</span>}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-sm font-bold">{f.name}</p>
-                </div>
-                {formData.invitedUserIds.includes(f.id) && <Check className="w-4 h-4 text-green-500" />}
-              </button>
-            ))}
-            {friends.length === 0 && <p className="text-xs opacity-40 italic">No friends available to invite.</p>}
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all ${formData.invitedUserIds.includes(f.id) ? 'bg-green-500 text-white' : 'bg-white/50 text-white/0'}`}>
+                    <Check className="w-4 h-4" />
+                  </div>
+                </button>
+              ));
+            })()}
           </div>
         </div>
       </div>
@@ -2031,7 +2197,7 @@ function RegistrationForm({
               type="email" 
               placeholder={t('auth.emailPlaceholder')}
               value={formData.email}
-              onChange={e => setFormData({ ...formData, email: e.target.value })}
+              onChange={e => setFormData({ ...formData, email: e.target.value.toLowerCase().trim() })}
               className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold text-[#141414]"
             />
           </div>
@@ -2135,7 +2301,7 @@ function LoginForm({
               type="email" 
               placeholder={t('auth.emailPlaceholder')}
               value={formData.email}
-              onChange={e => setFormData({ ...formData, email: e.target.value })}
+              onChange={e => setFormData({ ...formData, email: e.target.value.toLowerCase().trim() })}
               className="w-full bg-[#141414]/5 border-none rounded-2xl py-4 px-6 text-sm focus:ring-2 focus:ring-[#E2FF3B] outline-none font-bold text-[#141414]"
             />
           </div>
@@ -2828,15 +2994,17 @@ function NotificationsDrawer({
   notifications, 
   onClose, 
   onRead,
+  onFriendResponse,
   t
 }: { 
   notifications: PadelNotification[], 
   onClose: () => void,
   onRead: (id: string) => void,
+  onFriendResponse?: (requestId: string, status: 'accepted' | 'rejected') => void,
   t: (key: string) => string
 }) {
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end">
+    <div className="fixed inset-0 z-[130] flex justify-end">
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -2870,11 +3038,39 @@ function NotificationsDrawer({
                 onClick={() => onRead(n.id)}
                 className={`p-4 rounded-2xl border transition-all cursor-pointer ${n.read ? 'bg-white border-[#141414]/5' : 'bg-[#E2FF3B]/5 border-[#E2FF3B]/30 shadow-sm'}`}
               >
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1">
-                  {new Date(n.timestamp).toLocaleDateString()}
-                </p>
+                <div className="flex justify-between items-start mb-1">
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-40">
+                    {new Date(n.timestamp).toLocaleDateString()}
+                  </p>
+                  {n.type === 'new_request' && !n.read && (
+                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  )}
+                </div>
                 <h4 className="font-bold text-sm mb-1">{n.title}</h4>
-                <p className="text-xs opacity-60 leading-relaxed">{n.message}</p>
+                <p className="text-xs opacity-60 leading-relaxed mb-3">{n.message}</p>
+                
+                {n.type === 'new_request' && n.friendRequestId && !n.read && (
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFriendResponse?.(n.friendRequestId!, 'accepted');
+                      }}
+                      className="flex-1 py-2 bg-[#141414] text-[#E2FF3B] rounded-lg text-[10px] font-black uppercase tracking-widest"
+                    >
+                      {t('common.accept')}
+                    </button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFriendResponse?.(n.friendRequestId!, 'rejected');
+                      }}
+                      className="flex-1 py-2 bg-[#141414]/5 text-[#141414]/40 rounded-lg text-[10px] font-black uppercase tracking-widest"
+                    >
+                      {t('common.decline')}
+                    </button>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -3297,7 +3493,7 @@ function ProfileDrawer({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
              {[
                { icon: History, label: t('profile.playedGames'), value: user.attendedGamesCount || 0 },
-               { icon: Award, label: t('groups.members'), value: groups.filter(g => g.memberIds.includes(user.id)).length },
+               { icon: Award, label: t('groups.members'), value: (groups || []).filter(g => g.memberIds.includes(user.id)).length },
                { icon: Users, label: t('profile.friends'), value: user.friendIds?.length || 0 },
                { icon: Award, label: t('profile.skillLevel'), value: t(`profile.levels.${user.skillLevel}`) }
              ].map((stat, i) => (
@@ -3671,7 +3867,7 @@ function GameDetailDrawer({
   const isOwner = game.creatorId === currentUser.id;
   const isFull = slotsLeft <= 0;
   
-  const joinedUsers = game.joinedPlayers.map(id => players.find(p => p.id === id)).filter(Boolean) as User[];
+  const joinedUsers = game.joinedPlayers.map(id => (players || []).find(p => p.id === id)).filter(Boolean) as User[];
   const myRequest = game.requests?.find(r => r.userId === currentUser.id);
 
   return (

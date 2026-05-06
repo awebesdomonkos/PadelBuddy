@@ -31,13 +31,16 @@ export const translations: Record<Language, any> = {
       all: "Mind",
       active: "Aktív",
       datetime: "Dátum és idő",
-      gotIt: "Értem"
+      gotIt: "Értem",
+      accept: "Elfogadás",
+      decline: "Elutasítás"
     },
     nav: {
       games: "Játékok",
       players: "Játékosok",
       groups: "Csoportok",
-      profile: "Profil"
+      profile: "Profil",
+      myGames: "Saját meccsek"
     },
     players: {
       subTitle: "Találj partnereket a közeledben."
@@ -149,8 +152,8 @@ export const translations: Record<Language, any> = {
       },
       reliabilityStatus: {
         "New Player": "Új játékos",
-        "Regularly appears": "Rendszeresen megjelenik",
-        "Very reliable": "Nagyon megbízható",
+        "Regularly Appears": "Rendszeresen megjelenik",
+        "Very Reliable": "Nagyon megbízható",
         "Unreliable": "Kevésbé megbízható"
       },
       lfg: {
@@ -265,13 +268,20 @@ export const translations: Record<Language, any> = {
       leave: "Leave",
       loading: "Loading...",
       noData: "No data",
-      send: "Send"
+      send: "Send",
+      gotIt: "Got it",
+      accept: "Accept",
+      decline: "Decline",
+      all: "All",
+      active: "Active",
+      datetime: "Date & Time"
     },
     nav: {
       games: "Games",
       players: "Players",
       groups: "Groups",
-      profile: "Profile"
+      profile: "Profile",
+      myGames: "My Games"
     },
     auth: {
       title: "FindYour PadelBuddy",
@@ -296,7 +306,7 @@ export const translations: Record<Language, any> = {
         USERNAME_TAKEN: "This username is already taken.",
         NAME_TAKEN: "This name is already taken.",
         USER_NOT_FOUND: "No account found with this email.",
-        WRONG_PASSWORD: "Correct password, please try again!",
+        WRONG_PASSWORD: "Invalid password, please try again!",
         GENERIC: "Something went wrong. Please try again later."
       },
       noProfile: "Don't have a profile yet?",
@@ -319,6 +329,47 @@ export const translations: Record<Language, any> = {
       matchHistory: "Matches",
       playedGames: "Games Played",
       reliability: "Reliability",
+      reliabilityStatus: {
+        "New Player": "New Player",
+        "Regularly Appears": "Regularly Appears",
+        "Very Reliable": "Very Reliable",
+        "Unreliable": "Unreliable"
+      },
+      levels: {
+        Bronze: "Bronze",
+        Silver: "Silver",
+        Gold: "Gold",
+        Platinum: "Platinum",
+        Diamond: "Diamond",
+        Pro: "Pro"
+      },
+      levelDescriptions: {
+        Bronze: "Beginner level. Getting familiar with basics and rules.",
+        Silver: "Intermediate. Stable play style, conscious wall use.",
+        Gold: "Advanced. High technical and tactical knowledge.",
+        Platinum: "Competitive level. Intensive play, competitive experience.",
+        Diamond: "Semi-pro. Outstanding technique and physical strength.",
+        Pro: "Professional level. For professional players."
+      },
+      experienceLevels: {
+        "Less than 6 months": "Less than 6 months",
+        "6-12 months": "6-12 months",
+        "1-2 years": "1-2 years",
+        "2+ years": "2+ years"
+      },
+      lfg: {
+        "None": "None",
+        "Today": "Playing Today",
+        "Tomorrow": "Playing Tomorrow",
+        "Weekend": "Playing this Weekend",
+        "Now": "Playing Now"
+      },
+      playStyles: {
+        "Casual": "Casual",
+        "Competitive": "Competitive",
+        "Technical": "Technical",
+        "Power": "Power"
+      },
       addFriend: "Add Friend",
       block: "Block",
       unblock: "Unblock",
@@ -346,7 +397,21 @@ export const translations: Record<Language, any> = {
       public: "Public",
       groupOnly: "Group Only",
       inviteOnly: "Invite Only",
-      inviteFriends: "Invite Friends"
+      inviteFriends: "Invite Friends",
+      selectGroup: "Select Group",
+      noGroups: "No groups available",
+      gameTypes: {
+        "Friendly": "Friendly",
+        "Competitive": "Competitive",
+        "Training": "Training"
+      },
+      filters: {
+        all: "All",
+        today: "Today",
+        tomorrow: "Tomorrow",
+        weekend: "Weekend",
+        lastminute: "Last Minute 🔥"
+      }
     },
     groups: {
       title: "Groups",

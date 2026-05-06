@@ -133,6 +133,7 @@ export interface Notification {
   title: string;
   message: string;
   gameId?: string;
+  friendRequestId?: string;
   timestamp: string;
   read: boolean;
 }
