@@ -1,90 +1,45 @@
 import { Handler, HandlerEvent, HandlerContext } from "@netlify/functions";
-import { getStore } from "@netlify/blobs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import fs from "fs";
-import path from "path";
+
+// STABLE IN-MEMORY STORAGE (Note: Cleared on function cold starts)
+const users: any[] = [];
+const users_meta: any[] = [];
+const games: any[] = [];
+const groups: any[] = [];
+const clubs: any[] = [
+  { id: '1', name: 'Elite Padel Club', location: { city: 'Budapest' }, rating: 4.8, courts: 12 },
+  { id: '2', name: 'Padel Palace', location: { city: 'Budapest' }, rating: 4.5, courts: 8 }
+];
+const notifications: any[] = [];
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secure_random_secret";
-const IS_DEV = process.env.NODE_ENV === 'development' || !process.env.NETLIFY;
-
-// Local store fallback for development environment consistency
-const getLocalStore = (name: string) => {
-  const dataDir = path.resolve(process.cwd(), '.netlify-blobs');
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  const filePath = path.join(dataDir, `${name}.json`);
-
-  const readData = () => {
-    if (!fs.existsSync(filePath)) return {};
-    try {
-      return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    } catch {
-      return {};
-    }
-  };
-
-  const writeData = (data: any) => {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-  };
-
-  return {
-    get: async (key: string, options?: { type: string }) => {
-      const data = readData();
-      const val = data[key];
-      if (val === undefined) return null;
-      if (options?.type === 'json' && typeof val === 'string') {
-        try { return JSON.parse(val); } catch { return val; }
-      }
-      return val;
-    },
-    set: async (key: string, value: string) => {
-      const data = readData();
-      data[key] = value;
-      writeData(data);
-    }
-  };
-};
-
-const getStoreInstance = (name: string) => {
-  return IS_DEV ? getLocalStore(name) : getStore(name);
-};
-
-const getCollection = async (name: string) => {
-  try {
-    const store = getStoreInstance(name);
-    const list = await store.get("list", { type: "json" });
-    return Array.isArray(list) ? list : [];
-  } catch (err) {
-    console.error(`Error getting collection ${name}:`, err);
-    return [];
-  }
-};
-
-const saveCollection = async (name: string, data: any[]) => {
-  try {
-    const store = getStoreInstance(name);
-    await store.set("list", JSON.stringify(data));
-  } catch (err) {
-    console.error(`Error saving collection ${name}:`, err);
-  }
-};
 
 const jsonResponse = (statusCode: number, body: any) => ({
   statusCode,
-  headers: { "Content-Type": "application/json" },
+  headers: { 
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS"
+  },
   body: JSON.stringify(body),
 });
 
 export const handler: Handler = async (event: HandlerEvent, context: HandlerContext) => {
+  // Handle preflight requests
+  if (event.httpMethod === "OPTIONS") {
+    return jsonResponse(200, { message: "OK" });
+  }
+
   try {
     console.log('API invoked:', event.httpMethod, event.path);
 
-    if (!process.env.JWT_SECRET && !IS_DEV) {
-      return jsonResponse(500, { success: false, message: "JWT_SECRET is not configured" });
+    if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+      console.warn("JWT_SECRET is not configured in production");
     }
 
     const { httpMethod, path: eventPath, body } = event;
-    const userStore = getStoreInstance("users");
 
     // Route Parsing
     const cleanPath = eventPath.replace('/.netlify/functions/api', '').replace('/api', '');
@@ -114,7 +69,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       }
 
       const normalizedEmail = email.toLowerCase().trim();
-      const existingUser = await userStore.get(normalizedEmail, { type: "json" });
+      const existingUser = users.find(u => u.email === normalizedEmail);
       if (existingUser) {
         return jsonResponse(400, { success: false, error: "ALREADY_EXISTS", message: "Email already exists" });
       }
@@ -134,11 +89,10 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         languagePreference: userData.languagePreference || 'hu'
       };
 
-      await userStore.set(normalizedEmail, JSON.stringify(newUser));
+      users.push(newUser);
       
-      // Update meta list for public player browsing
-      const usersList = await getCollection("users_meta");
-      usersList.push({ 
+      // Update meta list
+      users_meta.push({ 
         id: userId, 
         name, 
         email: normalizedEmail, 
@@ -147,7 +101,6 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         avatarUrl: userData.avatarUrl || '',
         skillLevel: userData.skillLevel || 'Bronze'
       });
-      await saveCollection("users_meta", usersList);
 
       const token = jwt.sign({ userId, email: normalizedEmail }, JWT_SECRET, { expiresIn: "7d" });
       const { password: _, ...userWithoutPassword } = newUser;
@@ -167,7 +120,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       const { email, password } = loginData;
       const normalizedEmail = (email || "").toLowerCase().trim();
 
-      const user: any = await userStore.get(normalizedEmail, { type: "json" });
+      const user = users.find(u => u.email === normalizedEmail);
       if (!user) {
         return jsonResponse(401, { success: false, error: "INVALID_CREDENTIALS", message: "Invalid credentials" });
       }
@@ -191,7 +144,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       const token = authHeader.split(" ")[1];
       try {
         const decoded: any = jwt.verify(token, JWT_SECRET);
-        const user: any = await userStore.get(decoded.email, { type: "json" });
+        const user = users.find(u => u.email === decoded.email);
         if (!user) return jsonResponse(404, { success: false, message: "User not found" });
 
         const { password: _, ...userWithoutPassword } = user;
@@ -205,10 +158,10 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     const getAuthUser = async () => {
       const authHeader = event.headers.authorization;
       if (!authHeader?.startsWith("Bearer ")) return null;
-      const token = authHeader.split(" ")[1];
+      const tokenString = authHeader.split(" ")[1];
       try {
-        const decoded: any = jwt.verify(token, JWT_SECRET);
-        return await userStore.get(decoded.email, { type: "json" });
+        const decoded: any = jwt.verify(tokenString, JWT_SECRET);
+        return users.find(u => u.email === decoded.email) || null;
       } catch {
         return null;
       }
@@ -216,8 +169,6 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     // GAMES
     if (action === "games") {
-      const games = await getCollection("games");
-      
       if (httpMethod === "GET") {
         return jsonResponse(200, games);
       }
@@ -239,7 +190,6 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             createdAt: new Date().toISOString()
           };
           games.push(newGame);
-          await saveCollection("games", games);
           return jsonResponse(201, newGame);
         } else { // ACTIONS
           const gIdx = games.findIndex(g => g.id === itemId);
@@ -254,7 +204,6 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             };
             games[gIdx].requests = games[gIdx].requests || [];
             games[gIdx].requests.push(req);
-            await saveCollection("games", games);
             return jsonResponse(200, games[gIdx]);
           }
 
@@ -269,7 +218,6 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
                 games[gIdx].requests[rIdx].status = 'rejected';
               }
             }
-            await saveCollection("games", games);
             return jsonResponse(200, games[gIdx]);
           }
 
@@ -283,19 +231,16 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             };
             games[gIdx].chat = games[gIdx].chat || [];
             games[gIdx].chat.push(msg);
-            await saveCollection("games", games);
             return jsonResponse(200, games[gIdx]);
           }
 
           if (subAction === "attendance") {
             games[gIdx].attendance = payload.attendanceRecords;
-            await saveCollection("games", games);
             return jsonResponse(200, games[gIdx]);
           }
 
           if (subAction === "result") {
             games[gIdx].result = payload;
-            await saveCollection("games", games);
             return jsonResponse(200, games[gIdx]);
           }
         }
@@ -304,32 +249,29 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       if (httpMethod === "PUT" && itemId) {
         const authUser = await getAuthUser();
         if (!authUser) return jsonResponse(401, { success: false, message: "Unauthorized" });
-
-        let payload;
-        try { payload = JSON.parse(body || "{}"); } catch { return jsonResponse(400, { success: false, message: "Invalid JSON" }); }
-
         const gIdx = games.findIndex(g => g.id === itemId);
         if (gIdx === -1) return jsonResponse(404, { success: false, message: "Game not found" });
-
+        
+        let payload;
+        try { payload = JSON.parse(body || "{}"); } catch { return jsonResponse(400, { success: false, message: "Invalid JSON" }); }
+        
         games[gIdx] = { ...games[gIdx], ...payload };
-        await saveCollection("games", games);
         return jsonResponse(200, games[gIdx]);
       }
 
       if (httpMethod === "DELETE" && itemId) {
         const authUser = await getAuthUser();
         if (!authUser) return jsonResponse(401, { success: false, message: "Unauthorized" });
-        const remaining = games.filter(g => g.id !== itemId);
-        await saveCollection("games", remaining);
+        const gIdx = games.findIndex(g => g.id === itemId);
+        if (gIdx !== -1) games.splice(gIdx, 1);
         return jsonResponse(200, { success: true });
       }
     }
 
-    // USERS (Browsing and Profiles)
+    // USERS
     if (action === "users") {
       if (httpMethod === "GET") {
-        const usersList = await getCollection("users_meta");
-        return jsonResponse(200, usersList);
+        return jsonResponse(200, users_meta);
       }
       
       if (httpMethod === "PUT" && itemId) {
@@ -339,81 +281,30 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         let payload;
         try { payload = JSON.parse(body || "{}"); } catch { return jsonResponse(400, { success: false, message: "Invalid JSON" }); }
 
-        const updatedUser = { ...authUser, ...payload };
-        // Do not update password via this route
-        updatedUser.password = authUser.password; 
-        
-        await userStore.set(updatedUser.email.toLowerCase().trim(), JSON.stringify(updatedUser));
-
-        // Update meta
-        const usersList = await getCollection("users_meta");
-        const mIdx = usersList.findIndex(u => u.id === itemId);
-        if (mIdx !== -1) {
-          usersList[mIdx] = {
-            ...usersList[mIdx],
-            name: updatedUser.name,
-            location: updatedUser.location,
-            avatarUrl: updatedUser.avatarUrl,
-            username: updatedUser.username,
-            skillLevel: updatedUser.skillLevel
-          };
-          await saveCollection("users_meta", usersList);
-        }
-        
-        const { password: _, ...userWithoutPassword } = updatedUser;
-        return jsonResponse(200, userWithoutPassword);
-      }
-
-      if (httpMethod === "POST" && itemId) {
-        const authUser = await getAuthUser();
-        if (!authUser) return jsonResponse(401, { success: false, message: "Unauthorized" });
-        let payload;
-        try { payload = JSON.parse(body || "{}"); } catch { return jsonResponse(400, { success: false, message: "Invalid JSON" }); }
-
-        if (subAction === "block") {
-          authUser.blockedUserIds = authUser.blockedUserIds || [];
-          if (authUser.blockedUserIds.includes(itemId)) {
-            authUser.blockedUserIds = authUser.blockedUserIds.filter((id: string) => id !== itemId);
-          } else {
-            authUser.blockedUserIds.push(itemId);
+        const userIdx = users.findIndex(u => u.id === itemId);
+        if (userIdx !== -1) {
+          users[userIdx] = { ...users[userIdx], ...payload };
+          // Sync meta
+          const mIdx = users_meta.findIndex(u => u.id === itemId);
+          if (mIdx !== -1) {
+            users_meta[mIdx] = {
+              ...users_meta[mIdx],
+              name: users[userIdx].name,
+              location: users[userIdx].location,
+              avatarUrl: users[userIdx].avatarUrl,
+              username: users[userIdx].username,
+              skillLevel: users[userIdx].skillLevel
+            };
           }
-          await userStore.set(authUser.email.toLowerCase().trim(), JSON.stringify(authUser));
-          return jsonResponse(200, { success: true, user: authUser });
+          const { password: _, ...userWithoutPassword } = users[userIdx];
+          return jsonResponse(200, userWithoutPassword);
         }
-
-        if (subAction === "favorite") {
-          authUser.favoritePlayerIds = authUser.favoritePlayerIds || [];
-          const targetId = payload.targetUserId;
-          if (authUser.favoritePlayerIds.includes(targetId)) {
-            authUser.favoritePlayerIds = authUser.favoritePlayerIds.filter((id: string) => id !== targetId);
-          } else {
-            authUser.favoritePlayerIds.push(targetId);
-          }
-          await userStore.set(authUser.email.toLowerCase().trim(), JSON.stringify(authUser));
-          return jsonResponse(200, { success: true, user: authUser });
-        }
-      }
-    }
-
-    // CLUBS
-    if (action === "clubs") {
-      if (httpMethod === "GET") {
-        const clubs = await getCollection("clubs");
-        if (clubs.length === 0) {
-           const defaultClubs = [
-             { id: '1', name: 'Elite Padel Club', location: { city: 'Budapest' }, rating: 4.8, courts: 12 },
-             { id: '2', name: 'Padel Palace', location: { city: 'Budapest' }, rating: 4.5, courts: 8 }
-           ];
-           await saveCollection("clubs", defaultClubs);
-           return jsonResponse(200, defaultClubs);
-        }
-        return jsonResponse(200, clubs);
+        return jsonResponse(404, { success: false, message: "User not found" });
       }
     }
 
     // GROUPS
     if (action === "groups") {
-      const groups = await getCollection("groups");
       if (httpMethod === "GET") return jsonResponse(200, groups);
       
       if (httpMethod === "POST") {
@@ -432,7 +323,6 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             createdAt: new Date().toISOString()
           };
           groups.push(newGroup);
-          await saveCollection("groups", groups);
           return jsonResponse(201, newGroup);
         } else {
           const gIdx = groups.findIndex(g => g.id === itemId);
@@ -442,7 +332,6 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             if (!groups[gIdx].memberIds.includes(payload.userId)) {
               groups[gIdx].memberIds.push(payload.userId);
             }
-            await saveCollection("groups", groups);
             return jsonResponse(200, groups[gIdx]);
           }
 
@@ -456,112 +345,27 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             };
             groups[gIdx].chat = groups[gIdx].chat || [];
             groups[gIdx].chat.push(msg);
-            await saveCollection("groups", groups);
             return jsonResponse(201, msg);
           }
-
-          if (subAction === "invite") {
-            groups[gIdx].invitedUserIds = groups[gIdx].invitedUserIds || [];
-            if (!groups[gIdx].invitedUserIds.includes(payload.invitedUserId)) {
-              groups[gIdx].invitedUserIds.push(payload.invitedUserId);
-            }
-            // Add notification
-            const notifications = await getCollection("notifications");
-            notifications.push({
-              id: Math.random().toString(36).substr(2, 9),
-              userId: payload.invitedUserId,
-              type: 'group_invite',
-              title: 'Group Invitation',
-              message: `You were invited to join ${groups[gIdx].name}`,
-              data: { groupId: itemId },
-              read: false,
-              timestamp: new Date().toISOString()
-            });
-            await saveCollection("notifications", notifications);
-            await saveCollection("groups", groups);
-            return jsonResponse(200, groups[gIdx]);
-          }
         }
+      }
+    }
+
+    // CLUBS
+    if (action === "clubs") {
+      if (httpMethod === "GET") {
+        return jsonResponse(200, clubs);
       }
     }
 
     // NOTIFICATIONS
     if (action === "notifications") {
-      const notifications = await getCollection("notifications");
       if (httpMethod === "GET") {
         const authUser = await getAuthUser();
-        // Fallback for specific userId or 'me'
-        let targetUserId = itemId;
-        if (itemId === 'me') {
-          targetUserId = authUser?.id || null;
-        }
-        
-        if (!targetUserId) {
-          // If it's a guest or session not found, just return empty list
-          return jsonResponse(200, []);
-        }
+        const targetUserId = itemId === 'me' ? authUser?.id : itemId;
+        if (!targetUserId) return jsonResponse(200, []);
         const filtered = notifications.filter(n => n.userId === targetUserId);
         return jsonResponse(200, filtered);
-      }
-    }
-
-    // FRIENDS (Legacy logic from server.ts)
-    if (action === "friends") {
-      if (httpMethod === "POST") {
-        const authUser = await getAuthUser();
-        if (!authUser) return jsonResponse(401, { success: false, message: "Unauthorized" });
-        let payload;
-        try { payload = JSON.parse(body || "{}"); } catch { return jsonResponse(400, { success: false, message: "Invalid JSON" }); }
-
-        if (itemId === "request") {
-          const notifications = await getCollection("notifications");
-          notifications.push({
-            id: Math.random().toString(36).substr(2, 9),
-            userId: payload.toUserId,
-            type: 'friend_request',
-            title: 'Friend Request',
-            message: `Someone wants to be your friend`,
-            data: { fromUserId: payload.fromUserId },
-            read: false,
-            timestamp: new Date().toISOString()
-          });
-          await saveCollection("notifications", notifications);
-          return jsonResponse(200, { success: true });
-        }
-        
-        if (itemId === "respond") {
-          const { requestId, status } = payload;
-          const notifications = await getCollection("notifications");
-          const nIdx = notifications.findIndex(n => n.id === requestId);
-          if (nIdx !== -1) {
-            const notif = notifications[nIdx];
-            if (status === 'accepted') {
-              const fromUserId = notif.data.fromUserId;
-              const toUserId = notif.userId;
-              
-              const usersMeta = await getCollection("users_meta");
-              const fromUserMeta = usersMeta.find(u => u.id === fromUserId);
-              const toUserMeta = usersMeta.find(u => u.id === toUserId);
-              
-              if (fromUserMeta && toUserMeta) {
-                const fromUserObj = await userStore.get(fromUserMeta.email, { type: "json" });
-                const toUserObj = await userStore.get(toUserMeta.email, { type: "json" });
-                
-                fromUserObj.friendIds = fromUserObj.friendIds || [];
-                toUserObj.friendIds = toUserObj.friendIds || [];
-                
-                if (!fromUserObj.friendIds.includes(toUserId)) fromUserObj.friendIds.push(toUserId);
-                if (!toUserObj.friendIds.includes(fromUserId)) toUserObj.friendIds.push(fromUserId);
-                
-                await userStore.set(fromUserMeta.email, JSON.stringify(fromUserObj));
-                await userStore.set(toUserMeta.email, JSON.stringify(toUserObj));
-              }
-            }
-            notifications[nIdx].read = true;
-            await saveCollection("notifications", notifications);
-          }
-          return jsonResponse(200, { success: true });
-        }
       }
     }
 
