@@ -91,6 +91,21 @@ export default function App() {
   const [authMode, setAuthMode] = useState<'landing' | 'login' | 'register'>('landing');
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
 
+  const safeFetch = async (url: string, options: RequestInit = {}) => {
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(`Server returned invalid JSON response from ${url}`);
+    }
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `Request to ${url} failed`);
+    }
+    return data;
+  };
+
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -99,21 +114,15 @@ export default function App() {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const [gamesRes, playersRes, groupsRes, clubsRes, notifsRes] = await Promise.all([
-        fetch('/api/games', { headers }),
-        fetch('/api/users', { headers }),
-        fetch('/api/groups', { headers }),
-        fetch('/api/clubs', { headers }),
-        fetch(`/api/notifications/${currentUser?.id || 'me'}`, { headers })
+      const results = await Promise.all([
+        safeFetch('/api/games', { headers }),
+        safeFetch('/api/users', { headers }),
+        safeFetch('/api/groups', { headers }),
+        safeFetch('/api/clubs', { headers }),
+        safeFetch(`/api/notifications/${currentUser?.id || 'me'}`, { headers })
       ]);
       
-      const [gamesData, playersData, groupsData, clubsData, notifsData] = await Promise.all([
-        gamesRes.json(),
-        playersRes.json(),
-        groupsRes.json(),
-        clubsRes.json(),
-        notifsRes.json()
-      ]);
+      const [gamesData, playersData, groupsData, clubsData, notifsData] = results;
 
       setGames(Array.isArray(gamesData) ? gamesData : []);
       setPlayers(Array.isArray(playersData) ? playersData : []);
@@ -173,7 +182,7 @@ export default function App() {
   const handleProfileComplete = async (data: Partial<User>) => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/users/${currentUser.id}`, {
+      const updatedUser = await safeFetch(`/api/users/${currentUser.id}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -181,16 +190,11 @@ export default function App() {
         },
         body: JSON.stringify(data)
       });
-      if (res.ok) {
-        const updatedUser = await res.json();
-        const storedUser = localStorage.getItem('padel_user');
-        if (storedUser) {
-           localStorage.setItem('padel_user', JSON.stringify(updatedUser));
-        }
-        // Updating current user is handled via auth context or local state update
-        // Since we are using AuthContext, we should probably add an update method there
-        // For now I'll just refresh or use the response
+      const storedUser = localStorage.getItem('padel_user');
+      if (storedUser) {
+         localStorage.setItem('padel_user', JSON.stringify(updatedUser));
       }
+      fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -205,14 +209,12 @@ export default function App() {
   const handleJoinGame = async (gameId: string) => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/games/${gameId}/request`, {
+      await safeFetch(`/api/games/${gameId}/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.id, userName: currentUser.name })
       });
-      if (res.ok) {
-        fetchData(); // Refresh to see "Pending"
-      }
+      fetchData(); // Refresh to see "Pending"
     } catch (err) {
       console.error("Failed to request joining game", err);
     }
@@ -220,17 +222,15 @@ export default function App() {
 
   const handleDeleteGame = async (gameId: string) => {
     try {
-      const res = await fetch(`/api/games/${gameId}`, {
+      await safeFetch(`/api/games/${gameId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (res.ok) {
-        fetchData();
-        setGameIdToDelete(null);
-        if (selectedGame?.id === gameId) {
-          setSelectedGame(null);
-          setIsChatOpen(false);
-        }
+      fetchData();
+      setGameIdToDelete(null);
+      if (selectedGame?.id === gameId) {
+        setSelectedGame(null);
+        setIsChatOpen(false);
       }
     } catch (err) {
       console.error("Failed to delete game", err);
@@ -240,7 +240,7 @@ export default function App() {
   const handleToggleBlock = async (targetId: string) => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/users/${targetId}/block`, {
+      await safeFetch(`/api/users/${targetId}/block`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -248,16 +248,11 @@ export default function App() {
         },
         body: JSON.stringify({ userId: currentUser.id })
       });
-      if (res.ok) {
-        const updatedUser = await res.json();
-        // Since we are using AuthContext, we need a way to sync this.
-        // For now, I'll update fetchData or similar.
-        fetchData();
-        
-        // If the blocked player was selected, maybe close the profile
-        if (selectedPlayer?.id === targetId) {
-          setSelectedPlayer(null);
-        }
+      fetchData();
+      
+      // If the blocked player was selected, maybe close the profile
+      if (selectedPlayer?.id === targetId) {
+        setSelectedPlayer(null);
       }
     } catch (err) {
       console.error("Failed to toggle block", err);
@@ -266,7 +261,7 @@ export default function App() {
 
   const handleApproveRequest = async (gameId: string, userId: string, approve: boolean) => {
     try {
-      const res = await fetch(`/api/games/${gameId}/approve`, {
+      await safeFetch(`/api/games/${gameId}/approve`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -274,7 +269,7 @@ export default function App() {
         },
         body: JSON.stringify({ userId, approve })
       });
-      if (res.ok) fetchData();
+      fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -283,7 +278,7 @@ export default function App() {
   const handleSendMessage = async (gameId: string, text: string) => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/games/${gameId}/chat`, {
+      await safeFetch(`/api/games/${gameId}/chat`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -291,7 +286,7 @@ export default function App() {
         },
         body: JSON.stringify({ userId: currentUser.id, userName: currentUser.name, text })
       });
-      if (res.ok) fetchData();
+      fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -300,7 +295,7 @@ export default function App() {
   const handleToggleFavorite = async (targetUserId: string) => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/users/${currentUser.id}/favorite`, {
+      await safeFetch(`/api/users/${currentUser.id}/favorite`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -308,9 +303,7 @@ export default function App() {
         },
         body: JSON.stringify({ targetUserId })
       });
-      if (res.ok) {
-        fetchData();
-      }
+      fetchData();
     } catch (err) {
       console.error(err);
     }
@@ -323,7 +316,7 @@ export default function App() {
 
   const handleConfirmAttendance = async (gameId: string, records: Record<string, "appeared" | "missed">) => {
     try {
-      const res = await fetch(`/api/games/${gameId}/attendance`, {
+      await safeFetch(`/api/games/${gameId}/attendance`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -331,10 +324,8 @@ export default function App() {
         },
         body: JSON.stringify({ attendanceRecords: records })
       });
-      if (res.ok) {
-        fetchData();
-        setIsAttendanceOpen(false);
-      }
+      fetchData();
+      setIsAttendanceOpen(false);
     } catch (err) {
       console.error(err);
     }
@@ -343,7 +334,7 @@ export default function App() {
   const handleSendGroupMessage = async (text: string) => {
     if (!currentUser || !selectedGroup) return;
     try {
-      const res = await fetch(`/api/groups/${selectedGroup.id}/chat`, {
+      const newMessage = await safeFetch(`/api/groups/${selectedGroup.id}/chat`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -351,18 +342,15 @@ export default function App() {
         },
         body: JSON.stringify({ userId: currentUser.id, userName: currentUser.name, text })
       });
-      if (res.ok) {
-        const newMessage = await res.json();
-        // Optimistic update
-        const updatedGroups = groups.map(g => {
-          if (g.id === selectedGroup.id) {
-            return { ...g, chat: [...(g.chat || []), newMessage] };
-          }
-          return g;
-        });
-        setGroups(updatedGroups);
-        setSelectedGroup({ ...selectedGroup, chat: [...(selectedGroup.chat || []), newMessage] });
-      }
+      // Optimistic update
+      const updatedGroups = groups.map(g => {
+        if (g.id === selectedGroup.id) {
+          return { ...g, chat: [...(g.chat || []), newMessage] };
+        }
+        return g;
+      });
+      setGroups(updatedGroups);
+      setSelectedGroup({ ...selectedGroup, chat: [...(selectedGroup.chat || []), newMessage] });
     } catch (err) {
       console.error("Failed to send group message", err);
     }
@@ -371,7 +359,7 @@ export default function App() {
   const handleJoinGroup = async (groupId: string) => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/groups/${groupId}/join`, {
+      await safeFetch(`/api/groups/${groupId}/join`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -379,9 +367,7 @@ export default function App() {
         },
         body: JSON.stringify({ userId: currentUser.id })
       });
-      if (res.ok) {
-        fetchData();
-      }
+      fetchData();
     } catch (err) {
       console.error("Failed to join group", err);
     }
@@ -389,7 +375,7 @@ export default function App() {
 
   const handleRecordResult = async (gameId: string, result: { score: string, sets: { team1: number, team2: number }[] }) => {
     try {
-      const res = await fetch(`/api/games/${gameId}/result`, {
+      await safeFetch(`/api/games/${gameId}/result`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -397,10 +383,8 @@ export default function App() {
         },
         body: JSON.stringify(result)
       });
-      if (res.ok) {
-        fetchData();
-        setIsResultModalOpen(false);
-      }
+      fetchData();
+      setIsResultModalOpen(false);
     } catch (err) {
       console.error("Failed to record result", err);
     }
@@ -409,7 +393,7 @@ export default function App() {
   const handleSendFriendRequest = async (toUserId: string) => {
     if (!currentUser) return;
     try {
-      const res = await fetch('/api/friends/request', {
+      await safeFetch('/api/friends/request', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -417,9 +401,7 @@ export default function App() {
         },
         body: JSON.stringify({ fromUserId: currentUser.id, toUserId })
       });
-      if (res.ok) {
-        fetchData();
-      }
+      fetchData();
     } catch (err) {
       console.error("Failed to send friend request", err);
     }
@@ -427,7 +409,7 @@ export default function App() {
 
   const handleFriendResponse = async (requestId: string, status: 'accepted' | 'rejected') => {
     try {
-      const res = await fetch('/api/friends/respond', {
+      await safeFetch('/api/friends/respond', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -435,9 +417,7 @@ export default function App() {
         },
         body: JSON.stringify({ requestId, status })
       });
-      if (res.ok) {
-        fetchData();
-      }
+      fetchData();
     } catch (err) {
       console.error("Failed to respond to friend request", err);
     }
@@ -446,7 +426,7 @@ export default function App() {
   const handleCreateGroup = async (groupData: Partial<Group>) => {
     if (!currentUser) return;
     try {
-      const res = await fetch('/api/groups', {
+      await safeFetch('/api/groups', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -454,10 +434,8 @@ export default function App() {
         },
         body: JSON.stringify({ ...groupData, adminId: currentUser.id })
       });
-      if (res.ok) {
-        fetchData();
-        setActiveTab('groups');
-      }
+      fetchData();
+      setActiveTab('groups');
     } catch (err) {
       console.error("Failed to create group", err);
     }
@@ -466,7 +444,7 @@ export default function App() {
   const handleInviteToGroup = async (groupId: string, invitedUserId: string) => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/groups/${groupId}/invite`, {
+      await safeFetch(`/api/groups/${groupId}/invite`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -474,7 +452,7 @@ export default function App() {
         },
         body: JSON.stringify({ invitedUserId, invitedByUserId: currentUser.id })
       });
-      if (res.ok) fetchData();
+      fetchData();
     } catch (err) {
       console.error("Failed to invite to group", err);
     }
@@ -483,7 +461,7 @@ export default function App() {
   const handleUpdateUser = async (updatedData: Partial<User>) => {
     if (!currentUser) return;
     try {
-      const res = await fetch(`/api/users/${currentUser.id}`, {
+      const savedUser = await safeFetch(`/api/users/${currentUser.id}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
@@ -491,13 +469,8 @@ export default function App() {
         },
         body: JSON.stringify({ ...currentUser, ...updatedData })
       });
-      if (res.ok) {
-        const savedUser = await res.json();
-        // updateUser is from AuthContext
-        // For simplicity I'll refresh data
-        fetchData();
-        setIsEditingProfile(false);
-      }
+      fetchData();
+      setIsEditingProfile(false);
     } catch (err) {
       console.error("Failed to update user", err);
     }

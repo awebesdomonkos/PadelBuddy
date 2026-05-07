@@ -21,22 +21,33 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  const safeFetch = async (url: string, options: RequestInit = {}) => {
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error('Server returned invalid JSON response');
+    }
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || 'Request failed');
+    }
+    return data;
+  };
+
   const fetchMe = async (authToken: string) => {
     try {
-      const res = await fetch('/api/me', {
+      const user = await safeFetch('/api/me', {
         headers: {
           'Authorization': `Bearer ${authToken}`
         }
       });
-      if (res.ok) {
-        const user = await res.json();
-        setCurrentUser(user);
-      } else {
-        localStorage.removeItem('padel_token');
-        setToken(null);
-      }
+      setCurrentUser(user);
     } catch (err) {
       console.error("Auth verify error:", err);
+      localStorage.removeItem('padel_token');
+      setToken(null);
     } finally {
       setLoading(false);
     }
@@ -53,20 +64,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string) => {
     setAuthError(null);
     try {
-      const res = await fetch('/api/login', {
+      const data = await safeFetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email: email.toLowerCase().trim(), password })
       });
-      const data = await res.json();
-      if (res.ok) {
-        setToken(data.token);
-        setCurrentUser(data.user);
-        localStorage.setItem('padel_token', data.token);
-      } else {
-        setAuthError(data.error || 'Login failed');
-        throw new Error(data.error);
-      }
+      setToken(data.token);
+      setCurrentUser(data.user);
+      localStorage.setItem('padel_token', data.token);
     } catch (err: any) {
       setAuthError(err.message || 'Login failed');
       throw err;
@@ -76,20 +81,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const register = async (userData: any) => {
     setAuthError(null);
     try {
-      const res = await fetch('/api/register', {
+      const data = await safeFetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData)
       });
-      const data = await res.json();
-      if (res.ok) {
-        setToken(data.token);
-        setCurrentUser(data.user);
-        localStorage.setItem('padel_token', data.token);
-      } else {
-        setAuthError(data.error || 'Registration failed');
-        throw new Error(data.error);
-      }
+      setToken(data.token);
+      setCurrentUser(data.user);
+      localStorage.setItem('padel_token', data.token);
     } catch (err: any) {
       setAuthError(err.message || 'Registration failed');
       throw err;
