@@ -183,6 +183,12 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       if (path === "/games" && method === "GET") {
         return jsonResponse(200, { success: true, data: games });
       }
+
+      if (itemId && method === "GET") {
+        const game = games.find(g => g.id === itemId);
+        if (!game) return jsonResponse(404, { success: false, message: "Game not found" });
+        return jsonResponse(200, { success: true, data: game, game });
+      }
       
       if (method === "POST") {
         const authUser = await getAuthUser();
@@ -284,6 +290,18 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       if (path === "/users" && method === "GET") {
         return jsonResponse(200, { success: true, data: users_meta });
       }
+
+      if (itemId && method === "GET") {
+        const user = users.find(u => u.id === itemId);
+        if (!user) return jsonResponse(404, { success: false, message: "User not found" });
+
+        const { password: _, passwordHash: __, ...safeUser } = user;
+        return jsonResponse(200, {
+          success: true,
+          user: safeUser,
+          data: safeUser
+        });
+      }
       
       if (method === "PUT" && itemId) {
         const authUser = await getAuthUser();
@@ -317,6 +335,12 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     // GROUPS
     if (action === "groups") {
       if (path === "/groups" && method === "GET") return jsonResponse(200, { success: true, data: groups });
+
+      if (itemId && method === "GET") {
+        const group = groups.find(g => g.id === itemId);
+        if (!group) return jsonResponse(404, { success: false, message: "Group not found" });
+        return jsonResponse(200, { success: true, data: group, group });
+      }
       
       if (method === "POST") {
         const authUser = await getAuthUser();
@@ -342,6 +366,15 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           if (subAction === "join") {
             if (!groups[gIdx].memberIds.includes(payload.userId)) {
               groups[gIdx].memberIds.push(payload.userId);
+            }
+            return jsonResponse(200, { success: true, data: groups[gIdx] });
+          }
+
+          if (subAction === "invite") {
+            const { invitedUserId } = payload;
+            if (!groups[gIdx].invitedUserIds) groups[gIdx].invitedUserIds = [];
+            if (!groups[gIdx].invitedUserIds.includes(invitedUserId)) {
+              groups[gIdx].invitedUserIds.push(invitedUserId);
             }
             return jsonResponse(200, { success: true, data: groups[gIdx] });
           }
