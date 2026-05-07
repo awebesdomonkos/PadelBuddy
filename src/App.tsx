@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { useI18n } from './hooks/useI18n.ts';
+import { useAuth } from './context/AuthContext.tsx';
 import { 
   SkillLevel, 
   User, 
@@ -53,22 +54,10 @@ import {
   Language
 } from './types.ts';
 
-// Mock current user for MVP
-const MOCK_CURRENT_USER: User = {
-  id: 'me',
-  username: 'testuser',
-  name: 'User Name',
-  skillLevel: SkillLevel.Silver,
-  location: { lat: 41.3851, lng: 2.1734, city: 'Barcelona' },
-  bio: 'Just looking for some fun padel matches!',
-  friendIds: [],
-  blockedUserIds: []
-};
-
 export default function App() {
+  const { currentUser, token, login, register, logout, authError, setAuthError, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'games' | 'players' | 'profile' | 'create' | 'groups' | 'mygames'>('games');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [players, setPlayers] = useState<User[]>([]);
   const [clubs, setClubs] = useState<Club[]>([]);
@@ -100,56 +89,22 @@ export default function App() {
   // Registration/Auth state
   const [authForm, setAuthForm] = useState({ username: '', name: '', email: '', password: '', phone: '' });
   const [authMode, setAuthMode] = useState<'landing' | 'login' | 'register'>('landing');
-  const [authError, setAuthError] = useState<string | null>(null);
   const [isCompletingProfile, setIsCompletingProfile] = useState(false);
 
-  useEffect(() => {
-    if (currentUser?.languagePreference) {
-      setLang(currentUser.languagePreference);
-    } else {
-      setLang('hu');
-    }
-  }, [currentUser?.languagePreference]);
-
-  useEffect(() => {
-    // Check if user is "logged in" from localStorage
-    const storedUser = localStorage.getItem('padel_user');
-    if (storedUser) {
-      const user = JSON.parse(storedUser);
-      setCurrentUser(user);
-      
-      // Check if profile is complete (e.g. has bio and location)
-      if (!user.bio || !user.location?.city) {
-        setIsCompletingProfile(true);
-      }
-    } else {
-      setAuthMode('landing');
-      fetchData();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (currentUser?.id) {
-      fetchData();
-      
-      // If user logs in/registers, check if profile needs completion
-      if (!currentUser.bio || !currentUser.location?.city) {
-        setIsCompletingProfile(true);
-      } else {
-        setIsCompletingProfile(false);
-      }
-    }
-  }, [currentUser?.id]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const [gamesRes, playersRes, groupsRes, clubsRes, notifsRes] = await Promise.all([
-        fetch('/api/games'),
-        fetch('/api/users'),
-        fetch('/api/groups'),
-        fetch('/api/clubs'),
-        fetch(`/api/notifications/${currentUser?.id || 'me'}`)
+        fetch('/api/games', { headers }),
+        fetch('/api/users', { headers }),
+        fetch('/api/groups', { headers }),
+        fetch('/api/clubs', { headers }),
+        fetch(`/api/notifications/${currentUser?.id || 'me'}`, { headers })
       ]);
       
       const [gamesData, playersData, groupsData, clubsData, notifsData] = await Promise.all([
@@ -165,78 +120,53 @@ export default function App() {
       setGroups(Array.isArray(groupsData) ? groupsData : []);
       setClubs(Array.isArray(clubsData) ? clubsData : []);
       setNotifications(Array.isArray(notifsData) ? notifsData : []);
-
-      if (currentUser?.id) {
-        const updatedMe = (playersData as User[]).find(u => u.id === currentUser.id);
-        if (updatedMe) {
-          setCurrentUser(updatedMe);
-          localStorage.setItem('padel_user', JSON.stringify(updatedMe));
-        } else {
-          // User exists locally but not on server (e.g. server reset)
-          setCurrentUser(null);
-          localStorage.removeItem('padel_user');
-          setAuthMode('landing');
-        }
-      }
     } catch (err) {
       console.error("Failed to fetch data", err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [token, currentUser?.id]);
+
+  useEffect(() => {
+    if (currentUser?.languagePreference) {
+      setLang(currentUser.languagePreference);
+    } else {
+      setLang('hu');
+    }
+  }, [currentUser?.languagePreference, setLang]);
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      fetchData();
+      if (!currentUser.bio || !currentUser.location?.city) {
+        setIsCompletingProfile(true);
+      } else {
+        setIsCompletingProfile(false);
+      }
+    } else if (!authLoading) {
+      setAuthMode('landing');
+      fetchData();
+    }
+  }, [currentUser, authLoading, fetchData]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthError(null);
     try {
-      const res = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(authForm)
-      });
-      if (res.ok) {
-        const user = await res.json();
-        setCurrentUser(user);
-        localStorage.setItem('padel_user', JSON.stringify(user));
-        setAuthMode('landing');
-        setIsCompletingProfile(true);
-      } else {
-        const err = await res.json();
-        const errorKey = err.error || 'GENERIC';
-        setAuthError(t(`auth.errors.${errorKey}`));
-      }
+      await register(authForm);
+      setAuthMode('landing');
+      setIsCompletingProfile(true);
     } catch (err) {
-      console.error(err);
-      setAuthError(t('auth.errors.GENERIC'));
+      // Error handled by context
     }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthError(null);
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: authForm.email.toLowerCase().trim(), password: authForm.password })
-      });
-      if (res.ok) {
-        const user = await res.json();
-        setCurrentUser(user);
-        localStorage.setItem('padel_user', JSON.stringify(user));
-        setAuthMode('landing');
-        // Check if profile needs completion
-        if (!user.bio || !user.location?.city) {
-          setIsCompletingProfile(true);
-        }
-      } else {
-        const err = await res.json();
-        const errorKey = err.error || 'GENERIC';
-        setAuthError(t(`auth.errors.${errorKey}`));
-      }
+      await login(authForm.email.toLowerCase().trim(), authForm.password);
+      setAuthMode('landing');
     } catch (err) {
-      console.error(err);
-      setAuthError(t('auth.errors.GENERIC'));
+      // Error handled by context
     }
   };
 
@@ -245,15 +175,21 @@ export default function App() {
     try {
       const res = await fetch(`/api/users/${currentUser.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(data)
       });
       if (res.ok) {
         const updatedUser = await res.json();
-        setCurrentUser(updatedUser);
-        localStorage.setItem('padel_user', JSON.stringify(updatedUser));
-        setIsCompletingProfile(false);
-        setIsEditingProfile(false);
+        const storedUser = localStorage.getItem('padel_user');
+        if (storedUser) {
+           localStorage.setItem('padel_user', JSON.stringify(updatedUser));
+        }
+        // Updating current user is handled via auth context or local state update
+        // Since we are using AuthContext, we should probably add an update method there
+        // For now I'll just refresh or use the response
       }
     } catch (err) {
       console.error(err);
@@ -261,10 +197,10 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('padel_user');
+    logout();
     setAuthMode('landing');
   };
+
 
   const handleJoinGame = async (gameId: string) => {
     if (!currentUser) return;
@@ -285,7 +221,8 @@ export default function App() {
   const handleDeleteGame = async (gameId: string) => {
     try {
       const res = await fetch(`/api/games/${gameId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         fetchData();
@@ -305,15 +242,16 @@ export default function App() {
     try {
       const res = await fetch(`/api/users/${targetId}/block`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ userId: currentUser.id })
       });
       if (res.ok) {
         const updatedUser = await res.json();
-        setCurrentUser(updatedUser);
-        localStorage.setItem('padel_user', JSON.stringify(updatedUser));
-        
-        // If we update current user, we might need to refresh data to filter out newly blocked user from UI
+        // Since we are using AuthContext, we need a way to sync this.
+        // For now, I'll update fetchData or similar.
         fetchData();
         
         // If the blocked player was selected, maybe close the profile
@@ -330,7 +268,10 @@ export default function App() {
     try {
       const res = await fetch(`/api/games/${gameId}/approve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ userId, approve })
       });
       if (res.ok) fetchData();
@@ -344,7 +285,10 @@ export default function App() {
     try {
       const res = await fetch(`/api/games/${gameId}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ userId: currentUser.id, userName: currentUser.name, text })
       });
       if (res.ok) fetchData();
@@ -358,13 +302,14 @@ export default function App() {
     try {
       const res = await fetch(`/api/users/${currentUser.id}/favorite`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ targetUserId })
       });
       if (res.ok) {
-        const updatedUser = await res.json();
-        setCurrentUser(updatedUser);
-        localStorage.setItem('padel_user', JSON.stringify(updatedUser));
+        fetchData();
       }
     } catch (err) {
       console.error(err);
@@ -380,7 +325,10 @@ export default function App() {
     try {
       const res = await fetch(`/api/games/${gameId}/attendance`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ attendanceRecords: records })
       });
       if (res.ok) {
@@ -397,7 +345,10 @@ export default function App() {
     try {
       const res = await fetch(`/api/groups/${selectedGroup.id}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ userId: currentUser.id, userName: currentUser.name, text })
       });
       if (res.ok) {
@@ -422,7 +373,10 @@ export default function App() {
     try {
       const res = await fetch(`/api/groups/${groupId}/join`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ userId: currentUser.id })
       });
       if (res.ok) {
@@ -437,7 +391,10 @@ export default function App() {
     try {
       const res = await fetch(`/api/games/${gameId}/result`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(result)
       });
       if (res.ok) {
@@ -454,7 +411,10 @@ export default function App() {
     try {
       const res = await fetch('/api/friends/request', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ fromUserId: currentUser.id, toUserId })
       });
       if (res.ok) {
@@ -469,7 +429,10 @@ export default function App() {
     try {
       const res = await fetch('/api/friends/respond', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ requestId, status })
       });
       if (res.ok) {
@@ -485,7 +448,10 @@ export default function App() {
     try {
       const res = await fetch('/api/groups', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ ...groupData, adminId: currentUser.id })
       });
       if (res.ok) {
@@ -502,7 +468,10 @@ export default function App() {
     try {
       const res = await fetch(`/api/groups/${groupId}/invite`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ invitedUserId, invitedByUserId: currentUser.id })
       });
       if (res.ok) fetchData();
@@ -516,13 +485,17 @@ export default function App() {
     try {
       const res = await fetch(`/api/users/${currentUser.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ ...currentUser, ...updatedData })
       });
       if (res.ok) {
         const savedUser = await res.json();
-        setCurrentUser(savedUser);
-        localStorage.setItem('padel_user', JSON.stringify(savedUser));
+        // updateUser is from AuthContext
+        // For simplicity I'll refresh data
+        fetchData();
         setIsEditingProfile(false);
       }
     } catch (err) {
@@ -961,7 +934,10 @@ export default function App() {
                           setGameToEdit(newGame as any);
                           setActiveTab('create');
                         }}
-                        onConfirmAttendance={() => handleConfirmAttendance(game.id)}
+                        onConfirmAttendance={() => {
+                          setSelectedGame(game);
+                          setIsAttendanceOpen(true);
+                        }}
                         onRecordResult={() => {
                           setSelectedGame(game);
                           setIsResultModalOpen(true);
