@@ -33,6 +33,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!response.ok) {
       throw new Error(data?.message || data?.error || 'Request failed');
     }
+    // Auto-unwrap standard responses
+    if (data && data.success === true && data.data !== undefined) {
+      return data.data;
+    }
     return data;
   };
 

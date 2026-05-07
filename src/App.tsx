@@ -103,6 +103,10 @@ export default function App() {
     if (!response.ok) {
       throw new Error(data?.message || data?.error || `Request to ${url} failed`);
     }
+    // Auto-unwrap standard responses
+    if (data && data.success === true && data.data !== undefined) {
+      return data.data;
+    }
     return data;
   };
 

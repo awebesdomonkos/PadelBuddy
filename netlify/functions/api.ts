@@ -41,21 +41,31 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     const { httpMethod, path: eventPath, body } = event;
 
-    // Route Parsing
-    const cleanPath = eventPath.replace('/.netlify/functions/api', '').replace('/api', '');
-    const segments = cleanPath.split('/').filter(Boolean);
-    
+    const rawPath = event.path || '';
+    const method = event.httpMethod || '';
+
+    const path = rawPath
+      .replace('/.netlify/functions/api', '')
+      .replace('/api', '');
+
+    console.log('Route debug:', {
+      rawPath,
+      path,
+      method,
+    });
+
+    const segments = path.split('/').filter(Boolean);
     const action = segments[0] || '';
     const itemId = segments[1] || '';
     const subAction = segments[2] || '';
 
     // Health check
-    if (httpMethod === "GET" && action === "health") {
+    if (path === "/health" && method === "GET") {
       return jsonResponse(200, { success: true, message: "API is running" });
     }
 
     // AUTH: Register
-    if (httpMethod === "POST" && action === "register") {
+    if (path === "/register" && method === "POST") {
       let userData;
       try {
         userData = JSON.parse(body || "{}");
@@ -109,7 +119,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     }
 
     // AUTH: Login
-    if (httpMethod === "POST" && action === "login") {
+    if (path === "/login" && method === "POST") {
       let loginData;
       try {
         loginData = JSON.parse(body || "{}");
@@ -137,7 +147,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     }
 
     // AUTH: Me
-    if (httpMethod === "GET" && action === "me") {
+    if (path === "/me" && method === "GET") {
       const authHeader = event.headers.authorization;
       if (!authHeader?.startsWith("Bearer ")) return jsonResponse(401, { success: false, message: "Unauthorized" });
 
@@ -169,11 +179,11 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     // GAMES
     if (action === "games") {
-      if (httpMethod === "GET") {
-        return jsonResponse(200, games);
+      if (path === "/games" && method === "GET") {
+        return jsonResponse(200, { success: true, data: games });
       }
       
-      if (httpMethod === "POST") {
+      if (method === "POST") {
         const authUser = await getAuthUser();
         if (!authUser) return jsonResponse(401, { success: false, message: "Unauthorized" });
 
@@ -190,7 +200,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             createdAt: new Date().toISOString()
           };
           games.push(newGame);
-          return jsonResponse(201, newGame);
+          return jsonResponse(201, { success: true, data: newGame });
         } else { // ACTIONS
           const gIdx = games.findIndex(g => g.id === itemId);
           if (gIdx === -1) return jsonResponse(404, { success: false, message: "Game not found" });
@@ -204,7 +214,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             };
             games[gIdx].requests = games[gIdx].requests || [];
             games[gIdx].requests.push(req);
-            return jsonResponse(200, games[gIdx]);
+            return jsonResponse(200, { success: true, data: games[gIdx] });
           }
 
           if (subAction === "approve") {
@@ -218,7 +228,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
                 games[gIdx].requests[rIdx].status = 'rejected';
               }
             }
-            return jsonResponse(200, games[gIdx]);
+            return jsonResponse(200, { success: true, data: games[gIdx] });
           }
 
           if (subAction === "chat") {
@@ -231,22 +241,22 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             };
             games[gIdx].chat = games[gIdx].chat || [];
             games[gIdx].chat.push(msg);
-            return jsonResponse(200, games[gIdx]);
+            return jsonResponse(200, { success: true, data: games[gIdx] });
           }
 
           if (subAction === "attendance") {
             games[gIdx].attendance = payload.attendanceRecords;
-            return jsonResponse(200, games[gIdx]);
+            return jsonResponse(200, { success: true, data: games[gIdx] });
           }
 
           if (subAction === "result") {
             games[gIdx].result = payload;
-            return jsonResponse(200, games[gIdx]);
+            return jsonResponse(200, { success: true, data: games[gIdx] });
           }
         }
       }
 
-      if (httpMethod === "PUT" && itemId) {
+      if (method === "PUT" && itemId) {
         const authUser = await getAuthUser();
         if (!authUser) return jsonResponse(401, { success: false, message: "Unauthorized" });
         const gIdx = games.findIndex(g => g.id === itemId);
@@ -256,10 +266,10 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         try { payload = JSON.parse(body || "{}"); } catch { return jsonResponse(400, { success: false, message: "Invalid JSON" }); }
         
         games[gIdx] = { ...games[gIdx], ...payload };
-        return jsonResponse(200, games[gIdx]);
+        return jsonResponse(200, { success: true, data: games[gIdx] });
       }
 
-      if (httpMethod === "DELETE" && itemId) {
+      if (method === "DELETE" && itemId) {
         const authUser = await getAuthUser();
         if (!authUser) return jsonResponse(401, { success: false, message: "Unauthorized" });
         const gIdx = games.findIndex(g => g.id === itemId);
@@ -270,11 +280,11 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     // USERS
     if (action === "users") {
-      if (httpMethod === "GET") {
-        return jsonResponse(200, users_meta);
+      if (path === "/users" && method === "GET") {
+        return jsonResponse(200, { success: true, data: users_meta });
       }
       
-      if (httpMethod === "PUT" && itemId) {
+      if (method === "PUT" && itemId) {
         const authUser = await getAuthUser();
         if (!authUser || authUser.id !== itemId) return jsonResponse(403, { success: false, message: "Forbidden" });
 
@@ -297,7 +307,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             };
           }
           const { password: _, ...userWithoutPassword } = users[userIdx];
-          return jsonResponse(200, userWithoutPassword);
+          return jsonResponse(200, { success: true, data: userWithoutPassword });
         }
         return jsonResponse(404, { success: false, message: "User not found" });
       }
@@ -305,9 +315,9 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     // GROUPS
     if (action === "groups") {
-      if (httpMethod === "GET") return jsonResponse(200, groups);
+      if (path === "/groups" && method === "GET") return jsonResponse(200, { success: true, data: groups });
       
-      if (httpMethod === "POST") {
+      if (method === "POST") {
         const authUser = await getAuthUser();
         if (!authUser) return jsonResponse(401, { success: false, message: "Unauthorized" });
         let payload;
@@ -323,7 +333,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             createdAt: new Date().toISOString()
           };
           groups.push(newGroup);
-          return jsonResponse(201, newGroup);
+          return jsonResponse(201, { success: true, data: newGroup });
         } else {
           const gIdx = groups.findIndex(g => g.id === itemId);
           if (gIdx === -1) return jsonResponse(404, { success: false, message: "Group not found" });
@@ -332,7 +342,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             if (!groups[gIdx].memberIds.includes(payload.userId)) {
               groups[gIdx].memberIds.push(payload.userId);
             }
-            return jsonResponse(200, groups[gIdx]);
+            return jsonResponse(200, { success: true, data: groups[gIdx] });
           }
 
           if (subAction === "chat") {
@@ -345,7 +355,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             };
             groups[gIdx].chat = groups[gIdx].chat || [];
             groups[gIdx].chat.push(msg);
-            return jsonResponse(201, msg);
+            return jsonResponse(201, { success: true, data: msg });
           }
         }
       }
@@ -353,19 +363,19 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     // CLUBS
     if (action === "clubs") {
-      if (httpMethod === "GET") {
-        return jsonResponse(200, clubs);
+      if (path === "/clubs" && method === "GET") {
+        return jsonResponse(200, { success: true, data: clubs });
       }
     }
 
     // NOTIFICATIONS
-    if (action === "notifications") {
-      if (httpMethod === "GET") {
+    if (action === "notifications" || path === "/notifications/me") {
+      if (method === "GET") {
         const authUser = await getAuthUser();
-        const targetUserId = itemId === 'me' ? authUser?.id : itemId;
-        if (!targetUserId) return jsonResponse(200, []);
+        const targetUserId = (itemId === 'me' || path === '/notifications/me') ? authUser?.id : itemId;
+        if (!targetUserId) return jsonResponse(200, { success: true, data: [] });
         const filtered = notifications.filter(n => n.userId === targetUserId);
-        return jsonResponse(200, filtered);
+        return jsonResponse(200, { success: true, data: filtered });
       }
     }
 
