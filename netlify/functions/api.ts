@@ -148,31 +148,32 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     // AUTH: Me
     if (path === "/me" && method === "GET") {
-      const authHeader = event.headers.authorization;
+      const authHeader = event.headers.authorization || event.headers.Authorization;
       if (!authHeader?.startsWith("Bearer ")) return jsonResponse(401, { success: false, message: "Unauthorized" });
 
-      const token = authHeader.split(" ")[1];
+      const tokenString = authHeader.split(" ")[1];
       try {
-        const decoded: any = jwt.verify(token, JWT_SECRET);
+        const decoded: any = jwt.verify(tokenString, JWT_SECRET);
         const user = users.find(u => u.email === decoded.email);
         if (!user) return jsonResponse(404, { success: false, message: "User not found" });
 
         const { password: _, ...userWithoutPassword } = user;
         return jsonResponse(200, userWithoutPassword);
-      } catch {
-        return jsonResponse(401, { success: false, message: "Invalid token" });
+      } catch (err) {
+        return jsonResponse(401, { success: false, message: "Invalid token", error: String(err) });
       }
     }
 
     // Protected Route Helper
     const getAuthUser = async () => {
-      const authHeader = event.headers.authorization;
+      const authHeader = event.headers.authorization || event.headers.Authorization;
       if (!authHeader?.startsWith("Bearer ")) return null;
       const tokenString = authHeader.split(" ")[1];
       try {
         const decoded: any = jwt.verify(tokenString, JWT_SECRET);
         return users.find(u => u.email === decoded.email) || null;
-      } catch {
+      } catch (err) {
+        console.error('JWT Verify Error:', err);
         return null;
       }
     };

@@ -17,7 +17,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('padel_token'));
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -31,6 +31,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       throw new Error('Server returned invalid JSON response');
     }
     if (!response.ok) {
+      if (response.status === 401) {
+        logout();
+      }
       throw new Error(data?.message || data?.error || 'Request failed');
     }
     // Auto-unwrap standard responses
@@ -50,20 +53,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setCurrentUser(user);
     } catch (err) {
       console.error("Auth verify error:", err);
-      localStorage.removeItem('padel_token');
+      // logout() is called in safeFetch for 401, but we can be explicit here
+      localStorage.removeItem('token');
       setToken(null);
+      setCurrentUser(null);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (token) {
-      fetchMe(token);
+    const storedToken = localStorage.getItem('token');
+    if (storedToken) {
+      fetchMe(storedToken);
     } else {
       setLoading(false);
     }
-  }, [token]);
+  }, []);
 
   const login = async (email: string, password: string) => {
     setAuthError(null);
@@ -75,7 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       setToken(data.token);
       setCurrentUser(data.user);
-      localStorage.setItem('padel_token', data.token);
+      localStorage.setItem('token', data.token);
     } catch (err: any) {
       setAuthError(err.message || 'Login failed');
       throw err;
@@ -92,7 +98,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       });
       setToken(data.token);
       setCurrentUser(data.user);
-      localStorage.setItem('padel_token', data.token);
+      localStorage.setItem('token', data.token);
     } catch (err: any) {
       setAuthError(err.message || 'Registration failed');
       throw err;
@@ -102,7 +108,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     setToken(null);
     setCurrentUser(null);
-    localStorage.removeItem('padel_token');
+    localStorage.removeItem('token');
   };
 
   const updateUser = (data: Partial<User>) => {

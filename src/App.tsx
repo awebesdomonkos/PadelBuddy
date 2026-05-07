@@ -162,12 +162,24 @@ export default function App() {
     }
   }, [currentUser, authLoading, fetchData]);
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#F5F5F0] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-[#141414] border-t-[#E2FF3B] rounded-full animate-spin"></div>
+          <p className="font-black uppercase tracking-tighter italic text-sm opacity-50">FindYour PadelBuddy</p>
+        </div>
+      </div>
+    );
+  }
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await register(authForm);
       setAuthMode('landing');
-      setIsCompletingProfile(true);
+      // If registration is successful, AuthContext updates currentUser
+      // which triggers the useEffect that sets isCompletingProfile
     } catch (err) {
       // Error handled by context
     }
@@ -216,7 +228,7 @@ export default function App() {
       await safeFetch(`/api/games/${gameId}/request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.id, userName: currentUser.name })
+        body: JSON.stringify({ userId: currentUser?.id, userName: currentUser?.name })
       });
       fetchData(); // Refresh to see "Pending"
     } catch (err) {
@@ -250,7 +262,7 @@ export default function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ userId: currentUser.id })
+        body: JSON.stringify({ userId: currentUser?.id })
       });
       fetchData();
       
@@ -288,7 +300,7 @@ export default function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ userId: currentUser.id, userName: currentUser.name, text })
+        body: JSON.stringify({ userId: currentUser?.id, userName: currentUser?.name, text })
       });
       fetchData();
     } catch (err) {
@@ -344,7 +356,7 @@ export default function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ userId: currentUser.id, userName: currentUser.name, text })
+        body: JSON.stringify({ userId: currentUser?.id, userName: currentUser?.name, text })
       });
       // Optimistic update
       const updatedGroups = groups.map(g => {
@@ -369,7 +381,7 @@ export default function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ userId: currentUser.id })
+        body: JSON.stringify({ userId: currentUser?.id })
       });
       fetchData();
     } catch (err) {
@@ -403,7 +415,7 @@ export default function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ fromUserId: currentUser.id, toUserId })
+        body: JSON.stringify({ fromUserId: currentUser?.id, toUserId })
       });
       fetchData();
     } catch (err) {
@@ -436,7 +448,7 @@ export default function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ ...groupData, adminId: currentUser.id })
+        body: JSON.stringify({ ...groupData, adminId: currentUser?.id })
       });
       fetchData();
       setActiveTab('groups');
@@ -454,7 +466,7 @@ export default function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ invitedUserId, invitedByUserId: currentUser.id })
+        body: JSON.stringify({ invitedUserId, invitedByUserId: currentUser?.id })
       });
       fetchData();
     } catch (err) {
@@ -610,9 +622,9 @@ export default function App() {
               className={`flex items-center gap-2 p-1 pr-3 rounded-full border transition-all ${activeTab === 'profile' ? 'bg-[#E2FF3B] border-[#141414]/10' : 'bg-[#141414]/5 border-transparent hover:border-[#141414]/10'}`}
             >
               <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center overflow-hidden">
-                {currentUser.avatarUrl ? <img src={currentUser.avatarUrl} className="w-full h-full object-cover" /> : <UserIcon className="w-4 h-4" />}
+                {currentUser?.avatarUrl ? <img src={currentUser.avatarUrl} className="w-full h-full object-cover" /> : <UserIcon className="w-4 h-4" />}
               </div>
-              <span className="text-xs font-bold hidden sm:block">{currentUser.name}</span>
+              <span className="text-xs font-bold hidden sm:block">{currentUser?.name}</span>
             </button>
           </div>
         </div>
@@ -663,16 +675,16 @@ export default function App() {
                 ) : (
                   (() => {
                     const filteredGames = (games || []).filter(g => {
-                      if (currentUser.blockedUserIds?.includes(g.creatorId)) return false;
+                      if (currentUser?.blockedUserIds?.includes(g.creatorId)) return false;
 
                       // Visibility controls
                       if (g.visibility === 'group-only' && g.groupId) {
                         const group = (groups || []).find(gr => gr.id === g.groupId);
-                        if (!group?.memberIds.includes(currentUser.id) && g.creatorId !== currentUser.id) return false;
+                        if (!group?.memberIds.includes(currentUser?.id || '') && g.creatorId !== currentUser?.id) return false;
                       }
                       
                       if (g.visibility === 'invite-only') {
-                        if (!g.invitedUserIds?.includes(currentUser.id) && g.creatorId !== currentUser.id) return false;
+                        if (!g.invitedUserIds?.includes(currentUser?.id || '') && g.creatorId !== currentUser?.id) return false;
                       }
 
                       const date = new Date(g.datetime);
@@ -702,13 +714,13 @@ export default function App() {
 
                     return filteredGames.length > 0 ? (
                       filteredGames.map(game => {
-                        const myRequest = game.requests?.find(r => r.userId === currentUser.id);
+                        const myRequest = game.requests?.find(r => r.userId === currentUser?.id);
                         return (
                           <GameCard 
                             key={game.id} 
                             game={game} 
                             t={t}
-                            isJoined={game.joinedPlayers.includes(currentUser.id)}
+                            isJoined={game.joinedPlayers.includes(currentUser?.id || '')}
                             requestStatus={myRequest?.status}
                             onJoin={() => handleJoinGame(game.id)}
                             onOpenChat={() => {
@@ -719,7 +731,7 @@ export default function App() {
                               setGameToEdit(game);
                               setActiveTab('create');
                             }}
-                            isOwner={game.creatorId === currentUser.id}
+                            isOwner={game.creatorId === currentUser?.id}
                             onLeave={() => handleLeaveGame(game.id)}
                             onDelete={() => setGameIdToDelete(game.id)}
                             onRepeat={() => handleRepeatGame(game)}
@@ -961,15 +973,15 @@ export default function App() {
                         <UserIcon className="w-12 h-12" />
                       )}
                     </div>
-                    <h2 className="text-2xl font-black tracking-tight">{currentUser.name}</h2>
+                    <h2 className="text-2xl font-black tracking-tight">{currentUser?.name}</h2>
                     <div className="flex gap-2 mt-2 flex-wrap justify-center">
-                      <span className="px-3 py-1 bg-[#141414] text-[#E2FF3B] rounded-full text-xs font-bold uppercase tracking-widest">{currentUser.skillLevel}</span>
+                      <span className="px-3 py-1 bg-[#141414] text-[#E2FF3B] rounded-full text-xs font-bold uppercase tracking-widest">{currentUser?.skillLevel}</span>
                       <span className="px-3 py-1 bg-[#141414]/5 rounded-full text-xs font-medium uppercase tracking-widest flex items-center gap-1">
-                        <MapPin className="w-3 h-3" /> {currentUser.location.city}
+                        <MapPin className="w-3 h-3" /> {currentUser?.location?.city || t('common.unknown')}
                       </span>
-                      {currentUser.lfgStatus && currentUser.lfgStatus !== LFGStatus.None && (
+                      {currentUser?.lfgStatus && currentUser?.lfgStatus !== LFGStatus.None && (
                         <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-1">
-                          <Clock className="w-3 h-3" /> {currentUser.lfgStatus ? t(`profile.lfg.${currentUser.lfgStatus}`) : t('profile.lfg.None')}
+                          <Clock className="w-3 h-3" /> {currentUser?.lfgStatus ? t(`profile.lfg.${currentUser.lfgStatus}`) : t('profile.lfg.None')}
                         </span>
                       )}
                     </div>
@@ -979,19 +991,19 @@ export default function App() {
                     <div className="grid grid-cols-2 gap-4 pb-4 border-b border-[#141414]/5">
                       <div>
                         <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-1">{t('profile.playStyle')}</h3>
-                        <p className="text-sm font-bold">{currentUser.playStyle ? t(`profile.playStyles.${currentUser.playStyle}`) : t('profile.playStyles.Casual')}</p>
+                        <p className="text-sm font-bold">{currentUser?.playStyle ? t(`profile.playStyles.${currentUser.playStyle}`) : t('profile.playStyles.Casual')}</p>
                       </div>
                       <div>
                         <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-1">{t('profile.reliability')}</h3>
                         <div className="flex flex-col">
                            <p className={`text-sm font-bold ${
-                             currentUser.reliabilityStatus === 'Unreliable' ? 'text-red-500' : 
-                             currentUser.reliabilityStatus === 'Very Reliable' ? 'text-green-600' : 'text-blue-600'
+                             currentUser?.reliabilityStatus === 'Unreliable' ? 'text-red-500' : 
+                             currentUser?.reliabilityStatus === 'Very Reliable' ? 'text-green-600' : 'text-blue-600'
                            }`}>
-                             {t(`profile.reliabilityStatus.${currentUser.reliabilityStatus || 'New Player'}`)}
+                             {t(`profile.reliabilityStatus.${currentUser?.reliabilityStatus || 'New Player'}`)}
                            </p>
-                           {currentUser.completedGamesCount !== undefined && (
-                             <span className="text-[9px] opacity-40 font-bold uppercase">{currentUser.attendedGamesCount || 0} / {currentUser.completedGamesCount} {t('profile.gamesAttended')}</span>
+                           {currentUser?.completedGamesCount !== undefined && (
+                             <span className="text-[9px] opacity-40 font-bold uppercase">{currentUser?.attendedGamesCount || 0} / {currentUser?.completedGamesCount} {t('profile.gamesAttended')}</span>
                            )}
                         </div>
                       </div>
@@ -1000,19 +1012,19 @@ export default function App() {
                     <div className="grid grid-cols-4 gap-2 py-4 border-b border-[#141414]/5">
                       <div className="text-center p-2 bg-[#141414]/5 rounded-2xl">
                         <p className="text-[8px] font-black uppercase opacity-40">{t('profile.playedGames')}</p>
-                        <p className="text-xl font-black">{currentUser.attendedGamesCount || 0}</p>
+                        <p className="text-xl font-black">{currentUser?.attendedGamesCount || 0}</p>
                       </div>
                       <div className="text-center p-2 bg-[#141414]/5 rounded-2xl">
                         <p className="text-[8px] font-black uppercase opacity-40">{t('nav.groups')}</p>
-                        <p className="text-xl font-black">{(groups || []).filter(g => g.memberIds.includes(currentUser.id)).length}</p>
+                        <p className="text-xl font-black">{(groups || []).filter(g => g.memberIds.includes(currentUser?.id || '')).length}</p>
                       </div>
                       <div className="text-center p-2 bg-[#141414]/5 rounded-2xl">
                         <p className="text-[8px] font-black uppercase opacity-40">{t('profile.friends')}</p>
-                        <p className="text-xl font-black">{currentUser.friendIds?.length || 0}</p>
+                        <p className="text-xl font-black">{currentUser?.friendIds?.length || 0}</p>
                       </div>
                       <div className="text-center p-2 bg-[#141414]/5 rounded-2xl">
                         <p className="text-[8px] font-black uppercase opacity-40">{t('profile.skillLevel')}</p>
-                        <p className="text-xl font-black truncate">{currentUser.skillLevel}</p>
+                        <p className="text-xl font-black truncate">{currentUser?.skillLevel}</p>
                       </div>
                     </div>
 
@@ -1023,7 +1035,7 @@ export default function App() {
                         </h3>
                       </div>
                       <div className="grid grid-cols-1 gap-2">
-                        {(players || []).filter(p => currentUser.friendIds?.includes(p.id)).map(friend => (
+                        {(players || []).filter(p => currentUser?.friendIds?.includes(p.id)).map(friend => (
                           <div key={friend.id} className="flex items-center justify-between p-3 bg-[#141414]/5 rounded-2xl">
                             <div className="flex items-center gap-3">
                               <div className="w-10 h-10 rounded-full bg-[#141414] overflow-hidden flex items-center justify-center">
@@ -1044,7 +1056,7 @@ export default function App() {
                             </button>
                           </div>
                         ))}
-                        {(!currentUser.friendIds || currentUser.friendIds.length === 0) && (
+                        {(!currentUser?.friendIds || currentUser.friendIds.length === 0) && (
                           <p className="text-xs opacity-40 italic text-center py-4">{t('profile.noFriends')}</p>
                         )}
                       </div>
@@ -1053,7 +1065,7 @@ export default function App() {
                     <div className="pb-4 border-b border-[#141414]/5">
                       <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-2">{t('profile.playTimes')}</h3>
                       <div className="flex flex-wrap gap-2">
-                        {currentUser.playTime && currentUser.playTime.length > 0 ? (
+                        {currentUser?.playTime && currentUser.playTime.length > 0 ? (
                           currentUser.playTime.map(t => (
                             <span key={t} className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest">{t}</span>
                           ))
@@ -1065,10 +1077,10 @@ export default function App() {
 
                     <div>
                       <h3 className="text-xs font-bold uppercase tracking-widest opacity-40 mb-2">{t('profile.bio')}</h3>
-                      <p className="text-sm leading-relaxed">{currentUser.bio || t('common.noData')}</p>
+                      <p className="text-sm leading-relaxed">{currentUser?.bio || t('common.noData')}</p>
                     </div>
 
-                    {(currentUser.interests && currentUser.interests.length > 0) && (
+                    {(currentUser?.interests && currentUser.interests.length > 0) && (
                       <div className="pt-4 border-t border-[#141414]/5">
                         <h3 className="text-xs font-bold uppercase tracking-widest opacity-40 mb-3 flex items-center gap-2">
                           <Target className="w-3 h-3" /> {t('profile.interests')}
@@ -1083,7 +1095,7 @@ export default function App() {
                       </div>
                     )}
 
-                    {(currentUser.favoriteClubs && currentUser.favoriteClubs.length > 0) && (
+                    {(currentUser?.favoriteClubs && currentUser.favoriteClubs.length > 0) && (
                       <div className="pt-4 border-t border-[#141414]/5">
                         <h3 className="text-xs font-bold uppercase tracking-widest opacity-40 mb-3 flex items-center gap-2">
                           <Heart className="w-3 h-3" /> {t('profile.favoriteClubs')}
@@ -1105,7 +1117,7 @@ export default function App() {
                           <History className="w-3 h-3" /> {t('profile.matchHistory')}
                         </h3>
                       </div>
-                      <MatchHistory games={(games || []).filter(g => g.joinedPlayers.includes(currentUser.id))} />
+                      <MatchHistory games={(games || []).filter(g => g.joinedPlayers.includes(currentUser?.id || ''))} />
                     </div>
 
                     <div className="pt-6 border-t border-[#141414]/5">
@@ -2284,24 +2296,24 @@ function LoginForm({
 }
 
 function ProfileEdit({ user, onSave, onCancel, onShowTutorial }: { user: User, onSave: (data: Partial<User>) => void, onCancel: () => void, onShowTutorial?: () => void }) {
-  const { t } = useI18n(user.languagePreference || 'hu');
+  const { t } = useI18n(user?.languagePreference || 'hu');
   const [formData, setFormData] = useState({
-    name: user.name,
-    skillLevel: user.skillLevel,
-    city: user.location.city,
-    bio: user.bio || '',
-    avatarUrl: user.avatarUrl || '',
-    interests: [...(user.interests || [])],
-    favoriteClubs: [...(user.favoriteClubs || [])],
-    lfgStatus: user.lfgStatus || LFGStatus.None,
-    playStyle: user.playStyle || 'Casual',
-    playTime: [...(user.playTime || [])],
-    experience: user.experience || PadelExperience.Less6Months,
-    languages: [...(user.languages || [])],
-    languagePreference: user.languagePreference || 'hu',
-    socialLinks: { ...(user.socialLinks || {}) },
-    privacySettings: user.privacySettings || { publicProfile: true, showMatchHistory: true, showSocialLinks: true },
-    notifications: user.notificationSettings || {
+    name: user?.name || '',
+    skillLevel: user?.skillLevel || 'Bronze',
+    city: user?.location?.city || '',
+    bio: user?.bio || '',
+    avatarUrl: user?.avatarUrl || '',
+    interests: [...(user?.interests || [])],
+    favoriteClubs: [...(user?.favoriteClubs || [])],
+    lfgStatus: user?.lfgStatus || LFGStatus.None,
+    playStyle: user?.playStyle || 'Casual',
+    playTime: [...(user?.playTime || [])],
+    experience: user?.experience || PadelExperience.Less6Months,
+    languages: [...(user?.languages || [])],
+    languagePreference: user?.languagePreference || 'hu',
+    socialLinks: { ...(user?.socialLinks || {}) },
+    privacySettings: user?.privacySettings || { publicProfile: true, showMatchHistory: true, showSocialLinks: true },
+    notifications: user?.notificationSettings || {
       nearGames: true,
       reminders: true,
       groups: true,
