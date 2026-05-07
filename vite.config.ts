@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
-import { handler } from './netlify/functions/auth';
+import { handler } from './netlify/functions/api';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
@@ -32,7 +32,7 @@ export default defineConfig(({mode}) => {
                   queryStringParameters: Object.fromEntries(url.searchParams)
                 };
 
-                const result = await handler(event, {} as any);
+                const result: any = await handler(event, {} as any);
                 
                 res.statusCode = result.statusCode || 200;
                 Object.entries(result.headers || {}).forEach(([key, val]) => {
