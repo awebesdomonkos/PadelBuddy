@@ -55,7 +55,7 @@ import {
 } from './types.ts';
 
 export default function App() {
-  const { currentUser, token, login, register, logout, authError, setAuthError, loading: authLoading } = useAuth();
+  const { currentUser, token, login, register, logout, updateUser, authError, setAuthError, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'games' | 'players' | 'profile' | 'create' | 'groups' | 'mygames'>('games');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [games, setGames] = useState<Game[]>([]);
@@ -123,7 +123,7 @@ export default function App() {
         safeFetch('/api/users', { headers }),
         safeFetch('/api/groups', { headers }),
         safeFetch('/api/clubs', { headers }),
-        safeFetch(`/api/notifications/${currentUser?.id || 'me'}`, { headers })
+        safeFetch('/api/notifications/me', { headers })
       ]);
       
       const [gamesData, playersData, groupsData, clubsData, notifsData] = results;
@@ -206,10 +206,6 @@ export default function App() {
         },
         body: JSON.stringify(data)
       });
-      const storedUser = localStorage.getItem('padel_user');
-      if (storedUser) {
-         localStorage.setItem('padel_user', JSON.stringify(updatedUser));
-      }
       fetchData();
     } catch (err) {
       console.error(err);
@@ -227,7 +223,10 @@ export default function App() {
     try {
       await safeFetch(`/api/games/${gameId}/request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ userId: currentUser?.id, userName: currentUser?.name })
       });
       fetchData(); // Refresh to see "Pending"
@@ -256,7 +255,7 @@ export default function App() {
   const handleToggleBlock = async (targetId: string) => {
     if (!currentUser) return;
     try {
-      await safeFetch(`/api/users/${targetId}/block`, {
+      const data = await safeFetch(`/api/users/${targetId}/block`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -264,6 +263,8 @@ export default function App() {
         },
         body: JSON.stringify({ userId: currentUser?.id })
       });
+      const updatedUser = data?.user || data?.data || data;
+      if (updatedUser?.id) updateUser(updatedUser);
       fetchData();
       
       // If the blocked player was selected, maybe close the profile
@@ -311,7 +312,7 @@ export default function App() {
   const handleToggleFavorite = async (targetUserId: string) => {
     if (!currentUser) return;
     try {
-      await safeFetch(`/api/users/${currentUser.id}/favorite`, {
+      const data = await safeFetch(`/api/users/${currentUser.id}/favorite`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -319,6 +320,8 @@ export default function App() {
         },
         body: JSON.stringify({ targetUserId })
       });
+      const updatedUser = data?.user || data?.data || data;
+      if (updatedUser?.id) updateUser(updatedUser);
       fetchData();
     } catch (err) {
       console.error(err);
@@ -477,14 +480,16 @@ export default function App() {
   const handleUpdateUser = async (updatedData: Partial<User>) => {
     if (!currentUser) return;
     try {
-      const savedUser = await safeFetch(`/api/users/${currentUser.id}`, {
+      const data = await safeFetch(`/api/users/${currentUser.id}`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ ...currentUser, ...updatedData })
+        body: JSON.stringify(updatedData)
       });
+      const savedUser = data?.user || data?.data || data;
+      updateUser(savedUser);
       fetchData();
       setIsEditingProfile(false);
     } catch (err) {
@@ -800,8 +805,8 @@ export default function App() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {(players || [])
-                  .filter(p => p.id !== currentUser.id)
-                  .filter(p => !currentUser.blockedUserIds?.includes(p.id))
+                  .filter(p => !currentUser || p.id !== currentUser.id)
+                  .filter(p => !currentUser || !currentUser.blockedUserIds?.includes(p.id))
                   .filter(p => {
                     const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                                      p.location.city.toLowerCase().includes(searchQuery.toLowerCase());
@@ -814,7 +819,7 @@ export default function App() {
                       return lastActive > anHourAgo;
                     }
                     if (playerFilter === 'lfg') return p.lfgStatus && p.lfgStatus !== LFGStatus.None;
-                    if (playerFilter === 'friends') return currentUser.friendIds?.includes(p.id);
+                    if (playerFilter === 'friends') return currentUser?.friendIds?.includes(p.id);
                     
                     return true;
                   })
@@ -822,7 +827,7 @@ export default function App() {
                     <PlayerCard 
                       key={player.id} 
                       player={player} 
-                      isFavorite={currentUser.favoritePlayerIds?.includes(player.id)}
+                      isFavorite={currentUser?.favoritePlayerIds?.includes(player.id)}
                       onToggleFavorite={() => handleToggleFavorite(player.id)}
                       onOpenProfile={(p) => setSelectedPlayer(p)}
                     />
@@ -841,7 +846,7 @@ export default function App() {
             >
               <GroupsTab 
                 groups={groups} 
-                currentUser={currentUser!}
+                currentUser={currentUser}
                 onJoin={handleJoinGroup} 
                 onOpenChat={(group) => {
                   setSelectedGroup(group);
@@ -862,8 +867,8 @@ export default function App() {
             >
               <h2 className="text-3xl font-black uppercase tracking-tight mb-8">{t('games.createGame')}</h2>
               <CreateGameForm 
-                creatorId={currentUser.id} 
-                groups={(groups || []).filter(g => g.memberIds.includes(currentUser.id))}
+                creatorId={currentUser?.id || ''} 
+                groups={(groups || []).filter(g => currentUser && g.memberIds.includes(currentUser.id))}
                 allUsers={players || []}
                 t={t}
                 lang={lang}
@@ -967,8 +972,8 @@ export default function App() {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <div className="w-24 h-24 bg-[#141414] text-[#E2FF3B] rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-xl overflow-hidden">
-                      {currentUser.avatarUrl ? (
-                         <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-full h-full object-cover" />
+                      {currentUser?.avatarUrl ? (
+                         <img src={currentUser.avatarUrl} alt={currentUser?.name} className="w-full h-full object-cover" />
                       ) : (
                         <UserIcon className="w-12 h-12" />
                       )}
@@ -1016,7 +1021,7 @@ export default function App() {
                       </div>
                       <div className="text-center p-2 bg-[#141414]/5 rounded-2xl">
                         <p className="text-[8px] font-black uppercase opacity-40">{t('nav.groups')}</p>
-                        <p className="text-xl font-black">{(groups || []).filter(g => g.memberIds.includes(currentUser?.id || '')).length}</p>
+                        <p className="text-xl font-black">{(groups || []).filter(g => currentUser && g.memberIds.includes(currentUser.id)).length}</p>
                       </div>
                       <div className="text-center p-2 bg-[#141414]/5 rounded-2xl">
                         <p className="text-[8px] font-black uppercase opacity-40">{t('profile.friends')}</p>
@@ -2840,14 +2845,14 @@ function ChatDrawer({
   t
 }: { 
   game: Game, 
-  currentUser: User, 
+  currentUser: User | null, 
   onClose: () => void, 
   onSendMessage: (text: string) => void,
   onApprove: (uid: string, apr: boolean) => void,
   t: (key: string) => string
 }) {
   const [msg, setMsg] = useState('');
-  const isOwner = game.creatorId === currentUser.id;
+  const isOwner = game.creatorId === currentUser?.id;
   const pendingRequests = game.requests?.filter(r => r.status === 'pending') || [];
 
   return (
@@ -2901,13 +2906,13 @@ function ChatDrawer({
              </div>
           )}
           {game.chat?.map(c => (
-            <div key={c.id} className={`flex flex-col ${c.userId === currentUser.id ? 'items-end' : 'items-start'}`}>
+            <div key={c.id} className={`flex flex-col ${c.userId === currentUser?.id ? 'items-end' : 'items-start'}`}>
               <div className="flex items-baseline gap-2 mb-1 px-1">
                 <span className="text-[10px] font-black uppercase tracking-widest opacity-30">{c.userName}</span>
                 <span className="text-[8px] opacity-20">{new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm shadow-sm ${
-                c.userId === currentUser.id 
+                c.userId === currentUser?.id 
                   ? 'bg-[#141414] text-white rounded-tr-none' 
                   : 'bg-white rounded-tl-none border border-[#141414]/5'
               }`}>
@@ -3053,7 +3058,7 @@ function GroupChatDrawer({
   t
 }: { 
   group: Group, 
-  currentUser: User, 
+  currentUser: User | null, 
   onClose: () => void, 
   onSendMessage: (text: string) => void,
   t: (key: string) => string
@@ -3086,13 +3091,13 @@ function GroupChatDrawer({
              </div>
           )}
           {group.chat?.map(c => (
-            <div key={c.id} className={`flex flex-col ${c.userId === currentUser.id ? 'items-end' : 'items-start'}`}>
+            <div key={c.id} className={`flex flex-col ${c.userId === currentUser?.id ? 'items-end' : 'items-start'}`}>
               <div className="flex items-baseline gap-2 mb-1 px-1">
                 <span className="text-[10px] font-black uppercase tracking-widest opacity-30">{c.userName}</span>
                 <span className="text-[8px] opacity-20">{new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               <div className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm shadow-sm ${
-                c.userId === currentUser.id 
+                c.userId === currentUser?.id 
                   ? 'bg-[#141414] text-white rounded-tr-none' 
                   : 'bg-white rounded-tl-none border border-[#141414]/5'
               }`}>
@@ -3137,12 +3142,12 @@ function GroupsTab({
   onCreateClick
 }: { 
   groups: Group[], 
-  currentUser: User, 
+  currentUser: User | null, 
   onJoin: (id: string) => void,
   onOpenChat: (group: Group) => void,
   onCreateClick: () => void
 }) {
-  const { t } = useI18n(currentUser.languagePreference || 'hu');
+  const { t } = useI18n(currentUser?.languagePreference || 'hu');
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -3828,12 +3833,12 @@ function GameDetailDrawer({
 }) {
   const date = new Date(game.datetime);
   const slotsLeft = (game.requiredPlayers + 1) - game.joinedPlayers.length;
-  const isJoined = game.joinedPlayers.includes(currentUser.id);
-  const isOwner = game.creatorId === currentUser.id;
+  const isJoined = game.joinedPlayers.includes(currentUser?.id || '');
+  const isOwner = game.creatorId === currentUser?.id;
   const isFull = slotsLeft <= 0;
   
   const joinedUsers = game.joinedPlayers.map(id => (players || []).find(p => p.id === id)).filter(Boolean) as User[];
-  const myRequest = game.requests?.find(r => r.userId === currentUser.id);
+  const myRequest = game.requests?.find(r => r.userId === currentUser?.id);
 
   return (
     <div className="fixed inset-0 z-[110] flex justify-end">

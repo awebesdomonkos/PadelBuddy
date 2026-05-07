@@ -31,32 +31,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       throw new Error('Server returned invalid JSON response');
     }
     if (!response.ok) {
-      if (response.status === 401) {
+      if (response.status === 401 && url === '/api/me') {
         logout();
       }
       throw new Error(data?.message || data?.error || 'Request failed');
     }
-    // Auto-unwrap standard responses
-    if (data && data.success === true && data.data !== undefined) {
-      return data.data;
-    }
-    return data;
+    return data; // Return full object, caller can decide what to use
   };
 
   const fetchMe = async (authToken: string) => {
     try {
-      const user = await safeFetch('/api/me', {
+      const data = await safeFetch('/api/me', {
         headers: {
           'Authorization': `Bearer ${authToken}`
         }
       });
+      const user = data?.user || data?.data || data;
       setCurrentUser(user);
     } catch (err) {
       console.error("Auth verify error:", err);
-      // logout() is called in safeFetch for 401, but we can be explicit here
-      localStorage.removeItem('token');
-      setToken(null);
-      setCurrentUser(null);
+      logout();
     } finally {
       setLoading(false);
     }
